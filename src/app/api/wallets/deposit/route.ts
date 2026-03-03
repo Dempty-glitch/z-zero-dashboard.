@@ -71,7 +71,8 @@ export async function POST(request: Request) {
         }
 
         // 4. Verification passed! Credit the user.
-        const resolvedUserId = userId || null;
+        const { data: { session } } = await supabaseAdmin.auth.getSession();
+        const resolvedUserId = userId || session?.user?.id;
 
         if (resolvedUserId) {
             // 4a. User is logged in — credit directly
@@ -89,20 +90,20 @@ export async function POST(request: Request) {
             // Update wallet balance
             const { data: wallet } = await supabaseAdmin
                 .from('wallets')
-                .select('balance_usd')
+                .select('balance')
                 .eq('user_id', resolvedUserId)
                 .single();
 
             if (wallet) {
                 await supabaseAdmin
                     .from('wallets')
-                    .update({ balance_usd: wallet.balance_usd + verification.amountUsd })
+                    .update({ balance: Number(wallet.balance) + verification.amountUsd })
                     .eq('user_id', resolvedUserId);
             } else {
                 // Create wallet if it doesn't exist
                 await supabaseAdmin.from('wallets').insert({
                     user_id: resolvedUserId,
-                    balance_usd: verification.amountUsd,
+                    balance: verification.amountUsd,
                 });
             }
 

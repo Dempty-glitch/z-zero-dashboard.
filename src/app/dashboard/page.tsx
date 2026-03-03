@@ -15,23 +15,59 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [user, setUser] = useState<any>(null);
     const [balance, setBalance] = useState(0);
+    const [pendingCredit, setPendingCredit] = useState(0);
     const [totalSpent, setTotalSpent] = useState(0);
     const [activeAgentsCount, setActiveAgentsCount] = useState(0);
     const [transactions, setTransactions] = useState<any[]>([]);
     const router = useRouter();
 
     useEffect(() => {
+        let userSub: any;
+        let depositSub: any;
+
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
                 router.push("/login");
                 return;
             }
+            const userId = session.user.id;
             setUser(session.user);
-            fetchDashboardData(session.user.id);
+            fetchDashboardData(userId);
+
+            // 1. Subscribe to Wallet changes (Balance)
+            userSub = supabase
+                .channel('wallet_changes')
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'wallets',
+                    filter: `user_id=eq.${userId}`
+                }, (payload: any) => {
+                    if (payload.new) setBalance(Number(payload.new.balance));
+                })
+                .subscribe();
+
+            // 2. Subscribe to Deposit changes
+            depositSub = supabase
+                .channel('deposit_changes')
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'crypto_deposits',
+                    filter: `user_id=eq.${userId}`
+                }, () => {
+                    fetchDashboardData(userId); // Refresh list and pending count
+                })
+                .subscribe();
         };
 
         checkUser();
+
+        return () => {
+            if (userSub) userSub.unsubscribe();
+            if (depositSub) depositSub.unsubscribe();
+        };
     }, [router]);
 
     const fetchDashboardData = async (userId: string) => {
@@ -74,7 +110,17 @@ export default function DashboardPage() {
                 setBalance(Number(walletData.balance));
             }
 
-            // 2. Fetch Active Agents
+            // 2. Fetch Pending Deposits (from pending_deposits table)
+            const { data: pendingData } = await supabase
+                .from("pending_deposits")
+                .select("amount_usd")
+                .eq("user_id", userId)
+                .eq("status", "CONFIRMING");
+
+            const pendingTotal = pendingData?.reduce((acc: number, curr: any) => acc + Number(curr.amount_usd || 0), 0) || 0;
+            setPendingCredit(pendingTotal);
+
+            // 3. Fetch Active Agents
             const { count: agentCount } = await supabase
                 .from("cards")
                 .select("*", { count: 'exact', head: true })
@@ -82,7 +128,7 @@ export default function DashboardPage() {
                 .eq("is_active", true);
             setActiveAgentsCount(agentCount || 0);
 
-            // 3. Fetch Transactions (Spending)
+            // 4. Fetch Transactions (Spending)
             const { data: txData } = await supabase
                 .from("transactions")
                 .select(`
@@ -93,28 +139,30 @@ export default function DashboardPage() {
                     created_at,
                     cards (alias)
                 `)
+                .eq("cards.user_id", userId) // Ensure we only get own transactions if card table has user_id
                 .order("created_at", { ascending: false })
-                .limit(5);
+                .limit(10);
 
-            // 4. Fetch Deposits
+            // 5. Fetch Deposits
             const { data: depositData } = await supabase
                 .from("crypto_deposits")
                 .select("id, amount_usd, token_symbol, created_at, chain_id")
                 .eq("user_id", userId)
                 .order("created_at", { ascending: false })
-                .limit(5);
+                .limit(10);
 
             // Calculate Total Spent
             const { data: spentData } = await supabase
                 .from("transactions")
                 .select("amount")
                 .eq("status", "SUCCESS");
-            const total = spentData?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
+
+            const total = spentData?.reduce((acc: number, curr: any) => acc + Number(curr.amount), 0) || 0;
             setTotalSpent(total);
 
             // Combine for display
             const combinedTx = [
-                ...(txData || []).map(t => ({
+                ...(txData || []).map((t: any) => ({
                     id: t.id,
                     type: 'SPEND',
                     label: (t.cards as any)?.alias || 'Agent',
@@ -123,7 +171,7 @@ export default function DashboardPage() {
                     amount: -Number(t.amount),
                     date: t.created_at
                 })),
-                ...(depositData || []).map(d => ({
+                ...(depositData || []).map((d: any) => ({
                     id: d.id,
                     type: 'DEPOSIT',
                     label: `Deposit (${d.token_symbol})`,
@@ -181,9 +229,15 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-bold">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                        <p className="text-xs text-emerald-500 mt-1 flex items-center">
-                            Real-time collateral
-                        </p>
+                        {pendingCredit > 0 ? (
+                            <p className="text-xs text-yellow-500 mt-1 flex items-center animate-pulse">
+                                + ${pendingCredit.toFixed(2)} pending confirmation
+                            </p>
+                        ) : (
+                            <p className="text-xs text-emerald-500 mt-1 flex items-center">
+                                Real-time collateral
+                            </p>
+                        )}
                     </CardContent>
                 </Card>
 
