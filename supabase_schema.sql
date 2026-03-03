@@ -68,8 +68,12 @@ ALTER TABLE public.cards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
 
--- Allow users to see only their own data
+-- Allow users to see and create their own data
 CREATE POLICY "Users can view own record" ON public.users FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can insert own record" ON public.users FOR INSERT WITH CHECK (auth.uid() = id);
+
 CREATE POLICY "Users can view own wallets" ON public.wallets FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own wallet" ON public.wallets FOR INSERT WITH CHECK (auth.uid() = user_id);
+
 CREATE POLICY "Users can view own cards" ON public.cards FOR SELECT USING (auth.uid() = user_id);
 -- Transactions and tokens are linked through cards/users, complex RLS can be added later, for now we secure the Edge Functions.
