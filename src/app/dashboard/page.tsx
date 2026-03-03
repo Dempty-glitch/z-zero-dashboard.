@@ -1,15 +1,155 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal } from "lucide-react";
+import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import DepositModal from "@/components/DepositModal";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 export default function DashboardPage() {
     const [showDeposit, setShowDeposit] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState<any>(null);
+    const [balance, setBalance] = useState(0);
+    const [totalSpent, setTotalSpent] = useState(0);
+    const [activeAgentsCount, setActiveAgentsCount] = useState(0);
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const router = useRouter();
+
+    useEffect(() => {
+        const checkUser = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                router.push("/login");
+                return;
+            }
+            setUser(session.user);
+            fetchDashboardData(session.user.id);
+        };
+
+        checkUser();
+    }, [router]);
+
+    const fetchDashboardData = async (userId: string) => {
+        setLoading(true);
+        try {
+            // 0. Ensure user exists in public.users (sync from auth.users)
+            const { data: userData, error: userError } = await supabase
+                .from("users")
+                .select("id")
+                .eq("id", userId)
+                .single();
+
+            if (userError && userError.code === 'PGRST116') {
+                // User doesn't exist in public.users, create them
+                const { data: { user: authUser } } = await supabase.auth.getUser();
+                if (authUser) {
+                    await supabase.from("users").insert({
+                        id: userId,
+                        email: authUser.email
+                    });
+                }
+            }
+
+            // 1. Fetch/Create Wallet
+            const { data: walletData, error: walletError } = await supabase
+                .from("wallets")
+                .select("balance")
+                .eq("user_id", userId)
+                .single();
+
+            if (walletError && walletError.code === 'PGRST116') {
+                // Wallet doesn't exist, create it
+                const { data: newWallet } = await supabase
+                    .from("wallets")
+                    .insert({ user_id: userId, balance: 0 })
+                    .select()
+                    .single();
+                if (newWallet) setBalance(Number(newWallet.balance));
+            } else if (walletData) {
+                setBalance(Number(walletData.balance));
+            }
+
+            // 2. Fetch Active Agents
+            const { count: agentCount } = await supabase
+                .from("cards")
+                .select("*", { count: 'exact', head: true })
+                .eq("user_id", userId)
+                .eq("is_active", true);
+            setActiveAgentsCount(agentCount || 0);
+
+            // 3. Fetch Transactions (Spending)
+            const { data: txData } = await supabase
+                .from("transactions")
+                .select(`
+                    id,
+                    amount,
+                    merchant,
+                    status,
+                    created_at,
+                    cards (alias)
+                `)
+                .order("created_at", { ascending: false })
+                .limit(5);
+
+            // 4. Fetch Deposits
+            const { data: depositData } = await supabase
+                .from("crypto_deposits")
+                .select("id, amount_usd, token_symbol, created_at, chain_id")
+                .eq("user_id", userId)
+                .order("created_at", { ascending: false })
+                .limit(5);
+
+            // Calculate Total Spent
+            const { data: spentData } = await supabase
+                .from("transactions")
+                .select("amount")
+                .eq("status", "SUCCESS");
+            const total = spentData?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
+            setTotalSpent(total);
+
+            // Combine for display
+            const combinedTx = [
+                ...(txData || []).map(t => ({
+                    id: t.id,
+                    type: 'SPEND',
+                    label: (t.cards as any)?.alias || 'Agent',
+                    merchant: t.merchant,
+                    status: t.status,
+                    amount: -Number(t.amount),
+                    date: t.created_at
+                })),
+                ...(depositData || []).map(d => ({
+                    id: d.id,
+                    type: 'DEPOSIT',
+                    label: `Deposit (${d.token_symbol})`,
+                    merchant: d.chain_id.toUpperCase(),
+                    status: 'Settled',
+                    amount: Number(d.amount_usd),
+                    date: d.created_at
+                }))
+            ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+            setTransactions(combinedTx.slice(0, 10));
+
+        } catch (error) {
+            console.error("Error fetching dashboard data:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) {
+        return (
+            <div className="flex h-[80vh] items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8 animate-in fade-in duration-500">
@@ -28,7 +168,7 @@ export default function DashboardPage() {
 
             {/* Deposit Modal — Slides in when toggled */}
             {showDeposit && (
-                <div className="animate-in slide-in-from-top duration-300">
+                <div className="animate-in slide-in-from-right-4 duration-300">
                     <DepositModal onClose={() => setShowDeposit(false)} />
                 </div>
             )}
@@ -40,9 +180,9 @@ export default function DashboardPage() {
                         <Wallet className="h-4 w-4 text-emerald-400" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-bold">$1,250.00</div>
+                        <div className="text-3xl font-bold">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                         <p className="text-xs text-emerald-500 mt-1 flex items-center">
-                            <ArrowUpRight className="h-3 w-3 mr-1" /> +$500 from Base Network
+                            Real-time collateral
                         </p>
                     </CardContent>
                 </Card>
@@ -53,9 +193,9 @@ export default function DashboardPage() {
                         <Activity className="h-4 w-4 text-zinc-400" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-bold">$342.50</div>
+                        <div className="text-3xl font-bold">${totalSpent.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                         <p className="text-xs text-red-400 mt-1 flex items-center">
-                            <ArrowDownRight className="h-3 w-3 mr-1" /> -$45.00 today
+                            Lifetime agent spend
                         </p>
                     </CardContent>
                 </Card>
@@ -66,46 +206,56 @@ export default function DashboardPage() {
                         <Terminal className="h-4 w-4 text-cyan-400" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-3xl font-bold">2</div>
-                        <p className="text-xs text-zinc-500 mt-1">Using active API Keys</p>
+                        <div className="text-3xl font-bold">{activeAgentsCount}</div>
+                        <p className="text-xs text-zinc-500 mt-1">Operational virtual cards</p>
                     </CardContent>
                 </Card>
             </div>
 
             <Card className="bg-zinc-900/50 border-zinc-800">
                 <CardHeader>
-                    <CardTitle>Recent Agent Transactions</CardTitle>
-                    <CardDescription>JIT Payments executed by your AI Agents through the Partner network.</CardDescription>
+                    <CardTitle>Recent Activity</CardTitle>
+                    <CardDescription>Live feed of deposits and agent expenditures.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader className="border-zinc-800">
                             <TableRow className="hover:bg-zinc-800/50">
-                                <TableHead className="text-zinc-400">Agent</TableHead>
-                                <TableHead className="text-zinc-400">Merchant</TableHead>
+                                <TableHead className="text-zinc-400">Entity/Network</TableHead>
+                                <TableHead className="text-zinc-400">Merchant/Chain</TableHead>
                                 <TableHead className="text-zinc-400">Status</TableHead>
                                 <TableHead className="text-zinc-400 text-right">Amount</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            <TableRow className="border-zinc-800 hover:bg-zinc-800/50">
-                                <TableCell className="font-mono text-cyan-400">AutoGPT_Demo</TableCell>
-                                <TableCell>Anthropic API</TableCell>
-                                <TableCell><Badge className="bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/20">Settled</Badge></TableCell>
-                                <TableCell className="text-right font-medium">-$15.00</TableCell>
-                            </TableRow>
-                            <TableRow className="border-zinc-800 hover:bg-zinc-800/50">
-                                <TableCell className="font-mono text-cyan-400">AutoGPT_Demo</TableCell>
-                                <TableCell>GitHub Copilot</TableCell>
-                                <TableCell><Badge className="bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border-emerald-500/20">Settled</Badge></TableCell>
-                                <TableCell className="text-right font-medium">-$10.00</TableCell>
-                            </TableRow>
-                            <TableRow className="border-zinc-800 hover:bg-zinc-800/50">
-                                <TableCell className="font-mono text-cyan-400">Claude_Assistant</TableCell>
-                                <TableCell>AWS Services</TableCell>
-                                <TableCell><Badge className="bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 border-yellow-500/20">Hold</Badge></TableCell>
-                                <TableCell className="text-right font-medium">-$20.00</TableCell>
-                            </TableRow>
+                            {transactions.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="text-center py-8 text-zinc-500 italic">
+                                        No transactions yet. Start by depositing funds.
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                transactions.map(tx => (
+                                    <TableRow key={tx.id} className="border-zinc-800 hover:bg-zinc-800/50">
+                                        <TableCell className={`font-mono ${tx.type === 'SPEND' ? 'text-cyan-400' : 'text-emerald-400'}`}>
+                                            {tx.label}
+                                        </TableCell>
+                                        <TableCell>{tx.merchant}</TableCell>
+                                        <TableCell>
+                                            <Badge className={
+                                                tx.status === 'Settled' || tx.status === 'SUCCESS'
+                                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                    : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                                            }>
+                                                {tx.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className={`text-right font-medium ${tx.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                                            {tx.amount < 0 ? '' : '+'}${Math.abs(tx.amount).toFixed(2)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
                         </TableBody>
                     </Table>
                 </CardContent>
