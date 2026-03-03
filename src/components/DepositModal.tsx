@@ -20,6 +20,9 @@ const TOKEN_WHITELIST: Record<string, Record<string, { contract: `0x${string}`; 
         USDC: { contract: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', decimals: 6, wagmiId: 1 },
         USDT: { contract: '0xdAC17F958D2ee523a2206206994597C13D831ec7', decimals: 6, wagmiId: 1 },
     },
+    bsc: {
+        USDT: { contract: '0x55d398326f99059fF775485246999027B3197955', decimals: 18, wagmiId: 56 },
+    },
 };
 
 const ERC20_ABI = [
@@ -35,10 +38,11 @@ const ERC20_ABI = [
     },
 ] as const;
 
-// Simplified Chains (Removed BSC)
+// Simplified Chains
 const NETWORKS = [
     { id: 'base', name: 'Base', supportedTokens: ['USDC'], method: 'wallet', color: '#0052FF' },
     { id: 'ethereum', name: 'Ethereum', supportedTokens: ['USDC', 'USDT'], method: 'wallet', color: '#627EEA' },
+    { id: 'bsc', name: 'BNB Smart Chain', supportedTokens: ['USDT'], method: 'wallet', color: '#F3BA2F' },
     { id: 'tron', name: 'Tron (TRC-20)', supportedTokens: ['USDT'], method: 'manual', color: '#FF0013' },
 ];
 
@@ -192,7 +196,7 @@ export default function DepositModal({ onClose }: DepositModalProps) {
                         <div
                             key={s}
                             className={`h-1 flex-1 rounded-full transition-colors ${['token', 'network', 'amount', 'verify', 'result'].indexOf(step) >= idx
-                                    ? 'bg-emerald-500' : 'bg-zinc-800'
+                                ? 'bg-emerald-500' : 'bg-zinc-800'
                                 }`}
                         />
                     ))}
