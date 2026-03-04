@@ -1,12 +1,37 @@
-import { Terminal, CreditCard, LayoutDashboard, Settings, User } from "lucide-react";
+'use client';
+
+import { Terminal, CreditCard, LayoutDashboard, User, LogOut } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 export default function DashboardLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const [userLabel, setUserLabel] = useState('Loading...');
+    const router = useRouter();
+
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            if (user) {
+                // Show email or Google display name, truncated
+                const label = user.user_metadata?.full_name ||
+                    user.email?.split('@')[0] ||
+                    'User';
+                setUserLabel(label);
+            }
+        });
+    }, []);
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        router.push('/login');
+    };
+
     return (
         <div className="min-h-screen bg-background text-foreground flex">
             {/* Sidebar */}
@@ -27,12 +52,17 @@ export default function DashboardLayout({
                     </Button>
                 </nav>
 
-                <div className="mt-auto border-t border-zinc-800 pt-6">
-                    <Button variant="ghost" className="w-full justify-start text-zinc-400 hover:text-white hover:bg-zinc-800" asChild>
-                        <Link href="/login"><User className="mr-2 h-4 w-4" /> 0xAdmin...e3f4</Link>
-                    </Button>
-                    <Button variant="ghost" className="w-full justify-start text-zinc-500 hover:text-white hover:bg-zinc-800 mt-2" asChild>
-                        <Link href="/"><Settings className="mr-2 h-4 w-4" /> Log out</Link>
+                <div className="mt-auto border-t border-zinc-800 pt-6 space-y-1">
+                    <div className="flex items-center gap-2 px-3 py-2 text-zinc-400 text-sm truncate">
+                        <User className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">{userLabel}</span>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        className="w-full justify-start text-zinc-500 hover:text-white hover:bg-zinc-800"
+                        onClick={handleLogout}
+                    >
+                        <LogOut className="mr-2 h-4 w-4" /> Log out
                     </Button>
                 </div>
             </div>
@@ -44,8 +74,8 @@ export default function DashboardLayout({
                     <div className="flex items-center gap-2 text-emerald-400 font-bold">
                         <Terminal className="h-5 w-5" /> Z-ZERO
                     </div>
-                    <Button variant="outline" size="sm" className="border-zinc-700 bg-black text-xs">
-                        0xAdmin...e3f4
+                    <Button variant="outline" size="sm" className="border-zinc-700 bg-black text-xs" onClick={handleLogout}>
+                        <LogOut className="h-3 w-3 mr-1" /> Log out
                     </Button>
                 </div>
 
