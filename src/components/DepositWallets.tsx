@@ -12,6 +12,7 @@ interface WalletData {
 
 interface DepositWalletsProps {
     userId: string;
+    onRefresh: () => void;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -41,50 +42,69 @@ function NetworkBadge({ label, color }: { label: string; color: string }) {
     );
 }
 
-export default function DepositWallets({ userId }: DepositWalletsProps) {
+export default function DepositWallets({ userId, onRefresh }: DepositWalletsProps) {
     const [wallets, setWallets] = useState<WalletData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [generating, setGenerating] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [scanning, setScanning] = useState(false);
+    const [scanMessage, setScanMessage] = useState<string | null>(null);
 
     const fetchOrGenerateWallets = async () => {
         try {
-            setGenerating(true);
             setError(null);
-
             const res = await fetch('/api/wallets/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: userId }),
             });
 
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to generate wallets');
-            }
-
-            const data = await res.json();
-            setWallets(data);
+            if (!res.ok) throw new Error((await res.json()).error || 'Failed to generate wallets');
+            setWallets(await res.json());
         } catch (err: any) {
             setError(err.message);
         } finally {
             setLoading(false);
-            setGenerating(false);
+        }
+    };
+
+    const handleScan = async () => {
+        setScanning(true);
+        setScanMessage(null);
+        try {
+            const res = await fetch('/api/wallets/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) throw new Error(data.error || 'Failed to scan network');
+
+            setScanMessage(data.message);
+            if (data.totalCredited > 0) {
+                onRefresh(); // Trigger parent dashboard update
+            }
+
+            // clear success message after 5 seconds
+            setTimeout(() => setScanMessage(null), 5000);
+        } catch (err: any) {
+            setScanMessage(err.message);
+            setTimeout(() => setScanMessage(null), 5000);
+        } finally {
+            setScanning(false);
         }
     };
 
     useEffect(() => {
-        if (userId) {
-            fetchOrGenerateWallets();
-        }
+        if (userId) fetchOrGenerateWallets();
     }, [userId]);
 
     if (loading) {
         return (
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 h-full flex flex-col justify-center">
                 <div className="flex items-center gap-3 mb-4">
                     <Wallet className="text-purple-400" size={20} />
-                    <h3 className="font-semibold text-white">My Deposit Wallets</h3>
+                    <h3 className="font-semibold text-white">Deposit Wallets</h3>
                 </div>
                 <div className="space-y-3">
                     <div className="h-14 rounded-xl bg-white/5 animate-pulse" />
@@ -97,17 +117,9 @@ export default function DepositWallets({ userId }: DepositWalletsProps) {
     if (error) {
         return (
             <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-6">
-                <div className="flex items-center gap-3 mb-3">
-                    <Wallet className="text-red-400" size={20} />
-                    <h3 className="font-semibold text-white">My Deposit Wallets</h3>
-                </div>
                 <p className="text-sm text-red-400 mb-4">{error}</p>
-                <button
-                    onClick={fetchOrGenerateWallets}
-                    className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
-                >
-                    <RefreshCw size={14} />
-                    <span>Try again</span>
+                <button onClick={fetchOrGenerateWallets} className="flex items-center gap-2 text-sm text-gray-400">
+                    <RefreshCw size={14} /> Try again
                 </button>
             </div>
         );
@@ -116,26 +128,35 @@ export default function DepositWallets({ userId }: DepositWalletsProps) {
     const evmNetworks = ['BASE', 'BSC', 'ETH'];
 
     return (
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col h-full">
             <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                        <Wallet className="text-purple-400" size={16} />
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                        <Wallet className="text-emerald-400" size={16} />
                     </div>
                     <div>
-                        <h3 className="font-semibold text-white text-sm">My Deposit Wallets</h3>
-                        <p className="text-xs text-gray-500">Send crypto to fund your bot</p>
+                        <h3 className="font-semibold text-white text-sm">Custodial Deposit Wallets</h3>
+                        <p className="text-xs text-gray-500">Send USDT/USDC directly to these addresses</p>
                     </div>
                 </div>
-                {wallets?.created && (
-                    <span className="text-xs text-green-400 bg-green-400/10 px-2 py-1 rounded-full flex items-center gap-1">
-                        <Zap size={10} />
-                        Just created
-                    </span>
-                )}
+
+                <button
+                    onClick={handleScan}
+                    disabled={scanning}
+                    className="flex items-center gap-1.5 text-xs bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg text-emerald-400 transition-colors disabled:opacity-50"
+                >
+                    <RefreshCw size={12} className={scanning ? "animate-spin" : ""} />
+                    {scanning ? "Scanning..." : "Check Balance"}
+                </button>
             </div>
 
-            <div className="space-y-3">
+            {scanMessage && (
+                <div className={`mb-4 px-3 py-2 rounded-lg text-xs font-medium border ${scanMessage.includes('found') ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-zinc-800/50 border-white/5 text-gray-300'}`}>
+                    {scanMessage}
+                </div>
+            )}
+
+            <div className="space-y-3 flex-1">
                 {/* EVM Wallet */}
                 <div className="rounded-xl bg-black/30 border border-white/5 p-4">
                     <div className="flex items-center justify-between mb-2">

@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import DepositModal from "@/components/DepositModal";
 import DepositWallets from "@/components/DepositWallets";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
@@ -220,24 +219,7 @@ export default function DashboardPage() {
                     <h1 className="text-3xl font-bold tracking-tight">Overview</h1>
                     <p className="text-muted-foreground mt-1">Manage your Crypto collateral and Agent spending.</p>
                 </div>
-                <Button
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]"
-                    onClick={() => setShowDeposit(!showDeposit)}
-                >
-                    <Wallet className="mr-2 h-4 w-4" /> {showDeposit ? 'Close' : 'Deposit'}
-                </Button>
             </div>
-
-            {/* Deposit Modal — Slides in when toggled */}
-            {showDeposit && (
-                <div className="animate-in slide-in-from-right-4 duration-300">
-                    <DepositModal
-                        onClose={() => setShowDeposit(false)}
-                        evmAddress={evmAddress}
-                        tronAddress={tronAddress}
-                    />
-                </div>
-            )}
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 <Card className="bg-zinc-900/50 border-zinc-800">
@@ -286,7 +268,7 @@ export default function DashboardPage() {
 
             {/* Deposit Wallets — Crypto deposit addresses for this user */}
             <div className="grid gap-4 md:grid-cols-2">
-                {user && <DepositWallets userId={user.id} />}
+                {user && <DepositWallets userId={user.id} onRefresh={() => fetchDashboardData(user.id)} />}
 
                 {/* Quick tip card */}
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col justify-between">
