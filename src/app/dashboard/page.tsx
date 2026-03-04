@@ -7,6 +7,7 @@ import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2 } fro
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import DepositModal from "@/components/DepositModal";
+import DepositWallets from "@/components/DepositWallets";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -264,6 +265,27 @@ export default function DashboardPage() {
                         <p className="text-xs text-zinc-500 mt-1">Operational virtual cards</p>
                     </CardContent>
                 </Card>
+            </div>
+
+            {/* Deposit Wallets — Crypto deposit addresses for this user */}
+            <div className="grid gap-4 md:grid-cols-2">
+                {user && <DepositWallets userId={user.id} />}
+
+                {/* Quick tip card */}
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col justify-between">
+                    <div>
+                        <h3 className="font-semibold text-white text-sm mb-2">💡 How Deposits Work</h3>
+                        <ol className="text-xs text-gray-400 space-y-2 list-decimal list-inside">
+                            <li>Copy your deposit address (EVM or Tron)</li>
+                            <li>Send USDT or USDC from any exchange</li>
+                            <li>Balance updates automatically in ~2 min</li>
+                            <li>Your AI agent can now start spending</li>
+                        </ol>
+                    </div>
+                    <div className="mt-4 text-xs text-gray-600">
+                        Min deposit: $10 · Supported: USDT, USDC
+                    </div>
+                </div>
             </div>
 
             <Card className="bg-zinc-900/50 border-zinc-800">
