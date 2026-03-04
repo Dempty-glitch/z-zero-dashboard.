@@ -20,6 +20,7 @@ export interface DepositVerification {
     amountRaw: string;
     amountUsd: number;
     error?: string;
+    resolvedUserId?: string; // Set when deposit goes to a user's custodial HD wallet
 }
 
 export interface DepositAdapter {

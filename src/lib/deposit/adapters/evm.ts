@@ -1,9 +1,11 @@
 // src/lib/deposit/adapters/evm.ts
 // EVM Chain Adapter (Base, Ethereum, BSC)
 // Verifies ERC-20 transfer transactions on-chain via RPC
+// Supports deposits to both Treasury AND user custodial HD wallets
 
 import { DepositAdapter, DepositVerification } from '../types';
 import { CHAINS, TOKEN_WHITELIST } from '../config';
+import { supabaseAdmin } from '@/lib/supabase';
 
 // ERC-20 Transfer event signature: Transfer(address,address,uint256)
 const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
@@ -32,6 +34,32 @@ export class EvmAdapter implements DepositAdapter {
         return data.result;
     }
 
+    /**
+     * Check if a recipient address is valid (Treasury OR a user's custodial deposit wallet).
+     * Returns the userId if it's a user wallet, or 'treasury' if it's the treasury.
+     */
+    private async resolveRecipient(address: string): Promise<{ valid: boolean; userId?: string }> {
+        const addr = address.toLowerCase();
+
+        // Check treasury first (fast path)
+        if (addr === this.treasuryAddress) {
+            return { valid: true };
+        }
+
+        // Check if it's a user's custodial deposit address
+        const { data } = await supabaseAdmin
+            .from('deposit_wallets')
+            .select('user_id')
+            .ilike('evm_address', addr)
+            .single();
+
+        if (data) {
+            return { valid: true, userId: data.user_id };
+        }
+
+        return { valid: false };
+    }
+
     async verifyTransaction(txHash: string): Promise<DepositVerification> {
         // 1. Get Transaction Receipt
         const receipt = await this.rpcCall('eth_getTransactionReceipt', [txHash]);
@@ -57,8 +85,9 @@ export class EvmAdapter implements DepositAdapter {
             const sender = '0x' + log.topics[1].slice(26);
             const recipient = '0x' + log.topics[2].slice(26);
 
-            // Check recipient is our treasury
-            if (recipient.toLowerCase() !== this.treasuryAddress) continue;
+            // Check recipient is our treasury OR a user's custodial deposit wallet
+            const recipientInfo = await this.resolveRecipient(recipient);
+            if (!recipientInfo.valid) continue;
 
             // Check if token contract is whitelisted
             const tokenAddress = log.address.toLowerCase();
@@ -89,13 +118,15 @@ export class EvmAdapter implements DepositAdapter {
                 tokenSymbol: matchedSymbol,
                 amountRaw: amountRaw.toString(),
                 amountUsd,
+                // Pass along resolved userId so the deposit route can credit the right user
+                resolvedUserId: recipientInfo.userId,
             };
         }
 
         // No matching ERC-20 transfer found
         return {
             verified: false,
-            error: 'No matching stablecoin transfer to treasury found in this transaction',
+            error: 'No matching stablecoin transfer found to your deposit address in this transaction',
             chainId: this.chainId,
             txHash,
             senderAddress: receipt.from || '',

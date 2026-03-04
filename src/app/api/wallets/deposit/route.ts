@@ -71,8 +71,9 @@ export async function POST(request: Request) {
         }
 
         // 4. Verification passed! Credit the user.
+        // Priority: resolvedUserId (from wallet address lookup) > userId (from request) > session
         const { data: { session } } = await supabaseAdmin.auth.getSession();
-        const resolvedUserId = userId || session?.user?.id;
+        const resolvedUserId = verification.resolvedUserId || userId || session?.user?.id;
 
         if (resolvedUserId) {
             // 4a. User is logged in — credit directly
