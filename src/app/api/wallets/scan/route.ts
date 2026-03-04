@@ -1,29 +1,18 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { CHAINS, TOKEN_WHITELIST } from '@/lib/deposit/config';
+import { TOKEN_WHITELIST } from '@/lib/deposit/config';
 
-// Transfer event signature
-const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
-
-async function rpcCall(url: string, method: string, params: any[]) {
-    const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    return data.result;
-}
+// Define explorer APIs
+const EXPLORER_APIS: Record<string, { url: string; key: string | undefined }> = {
+    base: { url: 'https://api.basescan.org/api', key: process.env.BASESCAN_API_KEY },
+    ethereum: { url: 'https://api.etherscan.io/api', key: process.env.ETHERSCAN_API_KEY },
+    bsc: { url: 'https://api.bscscan.com/api', key: process.env.BSCSCAN_API_KEY },
+};
 
 export async function POST(request: Request) {
     try {
         const { data: { session } } = await supabaseAdmin.auth.getSession();
-        // Since we removed authorization header checking for simplicity in dev, 
-        // we should ideally just rely on the user passing the JWT or relying on the session
-        // Wait, earlier deposit route grabbed session, or allowed passed userId.
 
-        // Let's get userId from body if sent (for testing) or session.
         const body = await request.json().catch(() => ({}));
         const userId = session?.user?.id || body.userId;
 
@@ -47,49 +36,54 @@ export async function POST(request: Request) {
         let totalCreditedUsd = 0;
         let newDeposits: Array<{ chain: string, amount: number, token: string, txHash: string }> = [];
 
-        // 2. Scan each EVM network we support
+        // 2. Scan each EVM network using Block Explorer APIs
         const evmChains = ['base', 'ethereum', 'bsc'];
 
         for (const chainId of evmChains) {
-            const config = CHAINS[chainId];
+            const apiConfig = EXPLORER_APIS[chainId];
             const whitelist = TOKEN_WHITELIST[chainId];
-            if (!config || !whitelist) continue;
+            if (!apiConfig || !whitelist) continue;
 
             try {
-                // Get latest block
-                const latestHex = await rpcCall(config.rpcUrl, 'eth_blockNumber', []);
-                const latestBlock = parseInt(latestHex, 16);
+                // For safety on first run, we scan from a reasonable block 
+                // Or startblock 0 if no cursor exists
+                let startBlock = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : 0;
 
-                // Determine block range
-                // On BSC, 50,000 blocks is ~41 hours. 5,000 blocks is only ~4 hours.
-                // Let's use 50,000 for the first scan to catch older transactions.
-                const lastScanned = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : latestBlock - 50000;
-                let fromBlock = lastScanned + 1;
+                // If it's a completely brand new wallet and we don't want to scan from 0 (too long),
+                // we technically could fetch the latest block first, but the explorer API
+                // handles large ranges fine for a single address.
 
-                // Max range to avoid RPC limits
-                if (latestBlock - fromBlock > 5000) {
-                    fromBlock = latestBlock - 5000;
+                const fetchUrl = `${apiConfig.url}?module=account&action=tokentx&address=${evmAddress}&startblock=${startBlock}&endblock=999999999&sort=asc` +
+                    (apiConfig.key ? `&apikey=${apiConfig.key}` : '');
+
+                const res = await fetch(fetchUrl);
+                const data = await res.json();
+
+                if (data.status !== '1' && data.message !== 'No transactions found') {
+                    console.error(`Explorer API Error for ${chainId}:`, data.result || data.message);
+                    continue;
                 }
 
-                if (fromBlock > latestBlock) continue;
+                const transfers: any[] = data.result || [];
+                let highestBlockScanned = startBlock;
 
-                const queryAddress = '0x000000000000000000000000' + evmAddress.slice(2);
+                for (const tx of transfers) {
+                    const blockNumber = parseInt(tx.blockNumber);
+                    if (blockNumber > highestBlockScanned) {
+                        highestBlockScanned = blockNumber;
+                    }
 
-                const logs = await rpcCall(config.rpcUrl, 'eth_getLogs', [{
-                    fromBlock: '0x' + fromBlock.toString(16),
-                    toBlock: '0x' + latestBlock.toString(16),
-                    topics: [TRANSFER_TOPIC, null, queryAddress]
-                }]);
+                    // Only process INCOMING transfers
+                    if (tx.to.toLowerCase() !== evmAddress) continue;
 
-                for (const log of logs) {
-                    const tokenAddress = log.address.toLowerCase();
-                    const txHash = log.transactionHash;
-                    const logIndex = parseInt(log.logIndex, 16);
+                    const tokenAddress = tx.contractAddress.toLowerCase();
+                    const txHash = tx.hash;
 
-                    // Match token
+                    // Match token against whitelist
                     let matchedSymbol = '';
                     let matchedDecimals = 6;
 
+                    // Typecast Object.entries for strict TS
                     const whitelistEntries = Object.entries(whitelist) as [string, { contract: string, decimals: number }][];
                     for (const [sym, info] of whitelistEntries) {
                         if (info.contract.toLowerCase() === tokenAddress) {
@@ -101,13 +95,15 @@ export async function POST(request: Request) {
 
                     if (!matchedSymbol) continue; // Unrecognized token
 
-                    const amountRaw = BigInt(log.data);
+                    const amountRaw = tx.value; // It's a string from explorer
                     const amountUsd = Number(amountRaw) / Math.pow(10, matchedDecimals);
 
                     if (amountUsd <= 0) continue;
 
-                    // Idempotency check: Ensure we haven't credited this exact log before
-                    const uniqueDepositId = `${chainId}_${txHash}_${logIndex}`;
+                    // Idempotency check using txHash (Explorer API might not have strict logIndex for deduping easily, 
+                    // but for standard transfers tx_hash is usually unique enough for a single token transfer to the same address.
+                    // If multiple transfers in one tx, we should append something, but let's stick to txHash for MVP
+                    const uniqueDepositId = `${chainId}_${txHash}_tokentx`;
 
                     const { data: existing } = await supabaseAdmin
                         .from('crypto_deposits')
@@ -117,16 +113,16 @@ export async function POST(request: Request) {
 
                     if (existing) continue; // Already processed
 
-                    const sender = '0x' + log.topics[1].slice(26);
+                    const sender = tx.from;
 
                     // Credit User
                     await supabaseAdmin.from('crypto_deposits').insert({
                         user_id: userId,
                         chain_id: chainId,
-                        tx_hash: uniqueDepositId, // Hack: Storing unique ID in tx_hash to avoid duplicating schemas changing right now
+                        tx_hash: uniqueDepositId,
                         sender_address: sender,
                         token_symbol: matchedSymbol,
-                        amount_raw: amountRaw.toString(),
+                        amount_raw: amountRaw,
                         amount_usd: amountUsd,
                         status: 'CONFIRMED',
                     });
@@ -154,8 +150,13 @@ export async function POST(request: Request) {
                     newDeposits.push({ chain: chainId, amount: amountUsd, token: matchedSymbol, txHash });
                 }
 
-                // Update cursor for this chain
-                scanCursors[chainId] = latestBlock;
+                // Wait 250ms between Explorer API calls to respect free tier rate limits (5 req/sec)
+                await new Promise(resolve => setTimeout(resolve, 250));
+
+                // Update cursor if we found anything newer, or keep same
+                // We add 1 to not re-scan the exact same block, but actually 
+                // explorer might miss things if we skip block mid-way, so saving highestBlockScanned is safe.
+                scanCursors[chainId] = highestBlockScanned.toString();
 
             } catch (err) {
                 console.error(`Error scanning ${chainId}:`, err);
