@@ -61,7 +61,9 @@ export async function POST(request: Request) {
                 const latestBlock = parseInt(latestHex, 16);
 
                 // Determine block range
-                const lastScanned = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : latestBlock - 5000;
+                // On BSC, 50,000 blocks is ~41 hours. 5,000 blocks is only ~4 hours.
+                // Let's use 50,000 for the first scan to catch older transactions.
+                const lastScanned = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : latestBlock - 50000;
                 let fromBlock = lastScanned + 1;
 
                 // Max range to avoid RPC limits
