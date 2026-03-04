@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { User, Wallet, Chrome, Loader2, Mail } from "lucide-react";
+import { User, Wallet, Chrome, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 
@@ -86,15 +86,6 @@ export default function LoginPage() {
                         >
                             <Wallet className="mr-2 h-5 w-5 group-hover:text-blue-400 transition-colors" />
                             Connect Web3 Wallet
-                        </Button>
-
-                        <Button
-                            variant="ghost"
-                            className="w-full h-12 text-zinc-500 hover:text-zinc-300 hover:bg-transparent"
-                            disabled={loading}
-                        >
-                            <Mail className="mr-2 h-4 w-4" />
-                            Continue with Email
                         </Button>
                     </div>
 
