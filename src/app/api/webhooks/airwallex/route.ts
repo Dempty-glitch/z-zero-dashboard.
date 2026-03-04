@@ -45,24 +45,25 @@ export async function POST(request: Request) {
     const eventType = event?.name || event?.event_type;
     console.log(`[WEBHOOK] Received event: ${eventType}`);
 
-    // 2. Handle card transaction events
+    // 2. Route to correct handler based on event type
+    // Airwallex uses issuing.card_transaction.* naming convention
     if (
-        eventType === 'card.transaction.captured' ||
-        eventType === 'issuing.transaction.captured'
+        eventType === 'issuing.card_transaction.cleared' || // Settlement (money moved)
+        eventType === 'card.transaction.captured'           // Legacy/alternative name
     ) {
         await handleTransactionCaptured(event);
     }
 
     if (
-        eventType === 'card.transaction.declined' ||
-        eventType === 'issuing.transaction.declined'
+        eventType === 'issuing.card_transaction.declined' ||
+        eventType === 'card.transaction.declined'
     ) {
         await handleTransactionDeclined(event);
     }
 
     if (
-        eventType === 'card.expired' ||
-        eventType === 'issuing.card.expired'
+        eventType === 'issuing.card_transaction.expired' ||
+        eventType === 'card.expired'
     ) {
         await handleCardExpired(event);
     }
