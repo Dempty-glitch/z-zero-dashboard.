@@ -43,20 +43,27 @@ export class EvmAdapter implements DepositAdapter {
 
         // Check treasury first (fast path)
         if (addr === this.treasuryAddress) {
+            console.log(`[EvmAdapter] Recipient ${addr} is TREASURY`);
             return { valid: true };
         }
 
         // Check if it's a user's custodial deposit address
-        const { data } = await supabaseAdmin
+        const { data, error } = await supabaseAdmin
             .from('deposit_wallets')
             .select('user_id')
             .ilike('evm_address', addr)
             .single();
 
+        if (error) {
+            console.error(`[EvmAdapter] DB Lookup Error for ${addr}:`, error.message);
+        }
+
         if (data) {
+            console.log(`[EvmAdapter] Recipient ${addr} matches USER: ${data.user_id}`);
             return { valid: true, userId: data.user_id };
         }
 
+        console.log(`[EvmAdapter] Recipient ${addr} NOT FOUND in DB`);
         return { valid: false };
     }
 

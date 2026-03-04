@@ -15,7 +15,10 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 });
 
 // This is the client used by the backend to bypass RLS for administrative tasks
-export const supabaseAdmin = createClient(supabaseUrl, supabaseKey, {
+// It MUST use the SERVICE_ROLE_KEY (which should NEVER be prefixed with NEXT_PUBLIC_)
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseKey;
+
+export const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
     auth: {
         persistSession: false,
         autoRefreshToken: false,
