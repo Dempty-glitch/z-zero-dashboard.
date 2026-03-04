@@ -52,16 +52,20 @@ export async function GET(request: Request) {
                 const whitelist = TOKEN_WHITELIST[chainId];
                 if (!apiConfig || !whitelist) continue;
 
+                if (!apiConfig.key) {
+                    console.error(`[CRON_RECONCILE] Missing API Key for ${chainId.toUpperCase()}Scan. Skipping.`);
+                    continue;
+                }
+
                 try {
                     let startBlock = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : 0;
-                    const fetchUrl = `${apiConfig.url}?module=account&action=tokentx&address=${evmAddress}&startblock=${startBlock}&endblock=999999999&sort=asc` +
-                        (apiConfig.key ? `&apikey=${apiConfig.key}` : '');
+                    const fetchUrl = `${apiConfig.url}?module=account&action=tokentx&address=${evmAddress}&startblock=${startBlock}&endblock=999999999&sort=asc&apikey=${apiConfig.key}`;
 
                     const res = await fetch(fetchUrl);
                     const data = await res.json();
 
                     if (data.status !== '1' && data.message !== 'No transactions found') {
-                        continue;
+                        throw new Error(data.result || data.message || 'Unknown API Error');
                     }
 
                     const transfers: any[] = data.result || [];

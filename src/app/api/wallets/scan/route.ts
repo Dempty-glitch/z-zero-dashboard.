@@ -35,6 +35,7 @@ export async function POST(request: Request) {
         let scanCursors = walletRow.scan_cursors || {};
         let totalCreditedUsd = 0;
         let newDeposits: Array<{ chain: string, amount: number, token: string, txHash: string }> = [];
+        let errors: string[] = [];
 
         // 2. Scan each EVM network using Block Explorer APIs
         const evmChains = ['base', 'ethereum', 'bsc'];
@@ -44,24 +45,23 @@ export async function POST(request: Request) {
             const whitelist = TOKEN_WHITELIST[chainId];
             if (!apiConfig || !whitelist) continue;
 
+            if (!apiConfig.key) {
+                errors.push(`Missing API Key for ${chainId.toUpperCase()}Scan.`);
+                continue;
+            }
+
             try {
                 // For safety on first run, we scan from a reasonable block 
                 // Or startblock 0 if no cursor exists
                 let startBlock = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : 0;
 
-                // If it's a completely brand new wallet and we don't want to scan from 0 (too long),
-                // we technically could fetch the latest block first, but the explorer API
-                // handles large ranges fine for a single address.
-
-                const fetchUrl = `${apiConfig.url}?module=account&action=tokentx&address=${evmAddress}&startblock=${startBlock}&endblock=999999999&sort=asc` +
-                    (apiConfig.key ? `&apikey=${apiConfig.key}` : '');
+                const fetchUrl = `${apiConfig.url}?module=account&action=tokentx&address=${evmAddress}&startblock=${startBlock}&endblock=999999999&sort=asc&apikey=${apiConfig.key}`;
 
                 const res = await fetch(fetchUrl);
                 const data = await res.json();
 
                 if (data.status !== '1' && data.message !== 'No transactions found') {
-                    console.error(`Explorer API Error for ${chainId}:`, data.result || data.message);
-                    continue;
+                    throw new Error(data.result || data.message || 'Unknown API Error');
                 }
 
                 const transfers: any[] = data.result || [];
@@ -100,9 +100,7 @@ export async function POST(request: Request) {
 
                     if (amountUsd <= 0) continue;
 
-                    // Idempotency check using txHash (Explorer API might not have strict logIndex for deduping easily, 
-                    // but for standard transfers tx_hash is usually unique enough for a single token transfer to the same address.
-                    // If multiple transfers in one tx, we should append something, but let's stick to txHash for MVP
+                    // Idempotency check 
                     const uniqueDepositId = `${chainId}_${txHash}_tokentx`;
 
                     const { data: existing } = await supabaseAdmin
@@ -153,14 +151,11 @@ export async function POST(request: Request) {
                 // Wait 250ms between Explorer API calls to respect free tier rate limits (5 req/sec)
                 await new Promise(resolve => setTimeout(resolve, 250));
 
-                // Update cursor if we found anything newer, or keep same
-                // We add 1 to not re-scan the exact same block, but actually 
-                // explorer might miss things if we skip block mid-way, so saving highestBlockScanned is safe.
                 scanCursors[chainId] = highestBlockScanned.toString();
 
-            } catch (err) {
+            } catch (err: any) {
                 console.error(`Error scanning ${chainId}:`, err);
-                // Continue to next chain
+                errors.push(`${chainId.toUpperCase()} Scan Error: ${err.message}`);
             }
         }
 
@@ -170,12 +165,16 @@ export async function POST(request: Request) {
             .update({ scan_cursors: scanCursors })
             .eq('user_id', userId);
 
+        if (errors.length > 0 && totalCreditedUsd === 0) {
+            return NextResponse.json({ error: 'Scan Failed: ' + errors.join(' | ') }, { status: 400 });
+        }
+
         return NextResponse.json({
             success: true,
             totalCredited: totalCreditedUsd,
             newDeposits,
             message: totalCreditedUsd > 0
-                ? `$${totalCreditedUsd.toFixed(2)} found and credited!`
+                ? `$${totalCreditedUsd.toFixed(2)} found and credited!` + (errors.length > 0 ? ` (Issues on some networks)` : '')
                 : 'No new deposits found.',
         });
 
