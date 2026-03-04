@@ -20,6 +20,8 @@ export default function DashboardPage() {
     const [totalSpent, setTotalSpent] = useState(0);
     const [activeAgentsCount, setActiveAgentsCount] = useState(0);
     const [transactions, setTransactions] = useState<any[]>([]);
+    const [evmAddress, setEvmAddress] = useState<string>('');
+    const [tronAddress, setTronAddress] = useState<string>('');
     const router = useRouter();
 
     useEffect(() => {
@@ -109,6 +111,17 @@ export default function DashboardPage() {
                 if (newWallet) setBalance(Number(newWallet.balance));
             } else if (walletData) {
                 setBalance(Number(walletData.balance));
+            }
+
+            // 1.5 Fetch Deposit Wallets (Addresses for the Modal)
+            const { data: depositWallets } = await supabase
+                .from("deposit_wallets")
+                .select("evm_address, tron_address")
+                .eq("user_id", userId)
+                .single();
+            if (depositWallets) {
+                setEvmAddress(depositWallets.evm_address);
+                setTronAddress(depositWallets.tron_address);
             }
 
             // 2. Fetch Pending Deposits (from pending_deposits table)
@@ -218,7 +231,11 @@ export default function DashboardPage() {
             {/* Deposit Modal — Slides in when toggled */}
             {showDeposit && (
                 <div className="animate-in slide-in-from-right-4 duration-300">
-                    <DepositModal onClose={() => setShowDeposit(false)} />
+                    <DepositModal
+                        onClose={() => setShowDeposit(false)}
+                        evmAddress={evmAddress}
+                        tronAddress={tronAddress}
+                    />
                 </div>
             )}
 

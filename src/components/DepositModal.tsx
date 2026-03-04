@@ -46,16 +46,15 @@ const NETWORKS = [
     { id: 'tron', name: 'Tron (TRC-20)', supportedTokens: ['USDT'], method: 'manual', color: '#FF0013' },
 ];
 
-const TREASURY_EVM = (process.env.NEXT_PUBLIC_TREASURY_EVM || '') as `0x${string}`;
-const TREASURY_TRON = 'TCeoBv5dDa17PAgUpy1XkuM56kj9i8BT9X';
-
 type Step = 'token' | 'network' | 'amount' | 'verify' | 'result';
 
 interface DepositModalProps {
     onClose: () => void;
+    evmAddress?: string;
+    tronAddress?: string;
 }
 
-export default function DepositModal({ onClose }: DepositModalProps) {
+export default function DepositModal({ onClose, evmAddress, tronAddress }: DepositModalProps) {
     const [step, setStep] = useState<Step>('token');
     const [selectedToken, setSelectedToken] = useState<string | null>(null);
     const [selectedNetwork, setSelectedNetwork] = useState<typeof NETWORKS[0] | null>(null);
@@ -98,6 +97,8 @@ export default function DepositModal({ onClose }: DepositModalProps) {
             setLoading(true);
             setError('');
 
+            if (!evmAddress) throw new Error('Deposit EVM address not found for user');
+
             const tokenConfig = TOKEN_WHITELIST[selectedNetwork!.id]?.[selectedToken!];
             if (!tokenConfig) throw new Error('Token configuration not found');
 
@@ -119,7 +120,7 @@ export default function DepositModal({ onClose }: DepositModalProps) {
                 abi: ERC20_ABI,
                 address: tokenConfig.contract,
                 functionName: 'transfer',
-                args: [TREASURY_EVM, parsedAmount],
+                args: [evmAddress as `0x${string}`, parsedAmount],
             });
 
             setTxHash(hash);
@@ -293,14 +294,15 @@ export default function DepositModal({ onClose }: DepositModalProps) {
                         ) : (
                             <div className="space-y-4">
                                 <div className="p-4 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-3">
-                                    <Label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Treasury Address (Tron)</Label>
+                                    <Label className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold">Your Deposit Address (Tron)</Label>
                                     <div className="flex items-center gap-2">
-                                        <code className="flex-1 text-[11px] text-zinc-300 font-mono break-all">{TREASURY_TRON}</code>
+                                        <code className="flex-1 text-[11px] text-zinc-300 font-mono break-all">{tronAddress || 'Generating...'}</code>
                                         <Button
                                             variant="secondary"
                                             size="sm"
                                             className="h-7 text-[10px]"
-                                            onClick={() => navigator.clipboard.writeText(TREASURY_TRON)}
+                                            disabled={!tronAddress}
+                                            onClick={() => navigator.clipboard.writeText(tronAddress || '')}
                                         >Copy</Button>
                                     </div>
                                 </div>
