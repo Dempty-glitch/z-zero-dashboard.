@@ -72,6 +72,7 @@ export async function POST(request: Request) {
         const { data: newCard, error: newError } = await supabaseAdmin
             .from('cards')
             .insert({
+                user_id: userId,
                 alias: `JIT-${crypto.randomBytes(4).toString('hex')}`, // Unique temp alias
                 provider_card_id: providerCardId,
                 card_number_encrypted: maskedNumber, // We only store masked centrally

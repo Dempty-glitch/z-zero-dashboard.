@@ -3,12 +3,37 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2 } from "lucide-react";
+import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2, Clock, CreditCard } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import DepositWallets from "@/components/DepositWallets";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+
+function CountdownTimer({ expiresAt }: { expiresAt: string }) {
+    const [timeLeft, setTimeLeft] = useState<string>("");
+
+    useEffect(() => {
+        const calculate = () => {
+            const now = new Date().getTime();
+            const end = new Date(expiresAt).getTime();
+            const diff = end - now;
+
+            if (diff <= 0) {
+                setTimeLeft("Expired");
+            } else {
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                setTimeLeft(`${minutes}:${seconds.toString().padStart(2, "0")}`);
+            }
+        };
+        calculate();
+        const interval = setInterval(calculate, 1000);
+        return () => clearInterval(interval);
+    }, [expiresAt]);
+
+    return <span className="font-mono">{timeLeft}</span>;
+}
 
 export default function DashboardPage() {
     const [showDeposit, setShowDeposit] = useState(false);
@@ -19,13 +44,16 @@ export default function DashboardPage() {
     const [totalSpent, setTotalSpent] = useState(0);
     const [activeAgentsCount, setActiveAgentsCount] = useState(0);
     const [transactions, setTransactions] = useState<any[]>([]);
-    const [evmAddress, setEvmAddress] = useState<string>('');
-    const [tronAddress, setTronAddress] = useState<string>('');
+    const [virtualCards, setVirtualCards] = useState<any[]>([]);
+    const [evmAddress, setEvmAddress] = useState<string>("");
+    const [tronAddress, setTronAddress] = useState<string>("");
     const router = useRouter();
 
     useEffect(() => {
         let userSub: any;
         let depositSub: any;
+        let cardSub: any;
+        let tokenSub: any;
 
         const checkUser = async () => {
             const { data: { session } } = await supabase.auth.getSession();
@@ -62,6 +90,27 @@ export default function DashboardPage() {
                     fetchDashboardData(userId); // Refresh list and pending count
                 })
                 .subscribe();
+
+            // 3. Subscribe to Card changes
+            cardSub = supabase
+                .channel('card_changes')
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'cards',
+                    filter: `user_id=eq.${userId}`
+                }, () => fetchDashboardData(userId))
+                .subscribe();
+
+            // 4. Subscribe to Token changes
+            tokenSub = supabase
+                .channel('token_changes')
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'tokens'
+                }, () => fetchDashboardData(userId))
+                .subscribe();
         };
 
         checkUser();
@@ -69,6 +118,8 @@ export default function DashboardPage() {
         return () => {
             if (userSub) userSub.unsubscribe();
             if (depositSub) depositSub.unsubscribe();
+            if (cardSub) cardSub.unsubscribe();
+            if (tokenSub) tokenSub.unsubscribe();
         };
     }, [router]);
 
@@ -140,6 +191,31 @@ export default function DashboardPage() {
                 .eq("user_id", userId)
                 .eq("is_active", true);
             setActiveAgentsCount(agentCount || 0);
+
+            // 3.5 Fetch Virtual Cards (JIT Cards/Tokens)
+            const { data: cardsData } = await supabase
+                .from("cards")
+                .select(`
+                    id,
+                    created_at,
+                    allocated_limit_usd,
+                    is_active,
+                    tokens (
+                        status,
+                        expires_at,
+                        authorized_amount
+                    )
+                `)
+                .eq("user_id", userId)
+                .order("created_at", { ascending: true });
+
+            if (cardsData) {
+                setVirtualCards(cardsData.map((c, idx) => ({
+                    ...c,
+                    displayId: `Card #${(idx + 1).toString().padStart(4, "0")}`,
+                    activeToken: c.tokens?.[0] || null
+                })));
+            }
 
             // 4. Fetch Transactions (Spending)
             const { data: txData } = await supabase
@@ -285,6 +361,81 @@ export default function DashboardPage() {
                         Min deposit: $10 · Supported: USDT, USDC
                     </div>
                 </div>
+            </div>
+
+            {/* Virtual Cards Section */}
+            <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-xl font-bold flex items-center gap-2">
+                        <CreditCard className="text-cyan-400" size={24} />
+                        Active AI Virtual Cards
+                    </h2>
+                    <Badge variant="outline" className="text-zinc-500 border-zinc-800">
+                        Showing all cards
+                    </Badge>
+                </div>
+
+                {virtualCards.length === 0 ? (
+                    <div className="bg-zinc-900/30 border border-dashed border-zinc-800 rounded-3xl p-12 text-center text-zinc-500 italic">
+                        No virtual cards issued yet. Use your AI Agent to request a payment.
+                    </div>
+                ) : (
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {virtualCards.map((card) => {
+                            const isBurned = card.activeToken?.status === 'USED' || card.activeToken?.status === 'EXPIRED' || !card.is_active;
+                            return (
+                                <div
+                                    key={card.id}
+                                    className={`relative group p-5 rounded-3xl border transition-all duration-300 ${isBurned
+                                        ? 'bg-zinc-900/20 border-zinc-900 opacity-60 grayscale'
+                                        : 'bg-zinc-900/50 border-zinc-800 hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/5'
+                                        }`}
+                                >
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className="space-y-1">
+                                            <p className="text-xs font-bold text-zinc-500 uppercase tracking-tighter">{card.displayId}</p>
+                                            <h3 className="text-lg font-bold text-white tracking-tight">
+                                                ${Number(card.allocated_limit_usd).toFixed(2)}
+                                            </h3>
+                                        </div>
+                                        <Badge className={`${card.activeToken?.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                            card.activeToken?.status === 'USED' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                                                'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                            }`}>
+                                            {card.activeToken?.status || 'INACTIVE'}
+                                        </Badge>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {!isBurned && card.activeToken?.expires_at && (
+                                            <div className="flex items-center gap-2 text-xs text-orange-400 bg-orange-500/5 border border-orange-500/10 rounded-xl px-3 py-2">
+                                                <Clock size={14} className="animate-pulse" />
+                                                <span>Expires in: </span>
+                                                <CountdownTimer expiresAt={card.activeToken.expires_at} />
+                                            </div>
+                                        )}
+                                        {isBurned && (
+                                            <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-800/10 rounded-xl px-3 py-2">
+                                                <Activity size={14} />
+                                                <span>Card Permanently Burned</span>
+                                            </div>
+                                        )}
+                                        <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full transition-all duration-1000 ${isBurned ? 'bg-zinc-700 w-full' : 'bg-gradient-to-r from-cyan-500 to-blue-500 w-1/3 animate-pulse'}`}
+                                            ></div>
+                                        </div>
+                                    </div>
+
+                                    {/* Visual card patterns */}
+                                    <div className="absolute -bottom-2 -right-2 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
+                                        <CreditCard size={100} />
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             <Card className="bg-zinc-900/50 border-zinc-800">
