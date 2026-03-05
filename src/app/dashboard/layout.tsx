@@ -1,6 +1,6 @@
 'use client';
 
-import { Terminal, CreditCard, LayoutDashboard, User, LogOut } from "lucide-react";
+import { Terminal, CreditCard, LayoutDashboard, User, LogOut, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
@@ -13,6 +13,7 @@ export default function DashboardLayout({
     children: React.ReactNode;
 }) {
     const [userLabel, setUserLabel] = useState('Loading...');
+    const [isAdmin, setIsAdmin] = useState(false);
     const router = useRouter();
 
     useEffect(() => {
@@ -23,6 +24,15 @@ export default function DashboardLayout({
                     user.email?.split('@')[0] ||
                     'User';
                 setUserLabel(label);
+
+                // Check admin status
+                supabase.from('users')
+                    .select('is_admin')
+                    .eq('id', user.id)
+                    .single()
+                    .then(({ data }) => {
+                        if (data?.is_admin) setIsAdmin(true);
+                    });
             }
         });
     }, []);
@@ -50,6 +60,15 @@ export default function DashboardLayout({
                     <Button variant="ghost" className="w-full justify-start text-zinc-400 hover:text-white hover:bg-zinc-800" asChild>
                         <Link href="/dashboard/transactions"><CreditCard className="mr-2 h-4 w-4" /> Transactions</Link>
                     </Button>
+
+                    {isAdmin && (
+                        <div className="pt-4 mt-4 border-t border-zinc-900/50">
+                            <p className="text-[10px] font-bold text-amber-500 uppercase tracking-widest px-4 mb-2">Internal Controls</p>
+                            <Button variant="ghost" className="w-full justify-start text-amber-500/70 hover:text-amber-500 hover:bg-amber-500/5 border border-transparent hover:border-amber-500/20" asChild>
+                                <Link href="/admin"><ShieldAlert className="mr-2 h-4 w-4" /> Admin Panel</Link>
+                            </Button>
+                        </div>
+                    )}
                 </nav>
 
                 <div className="mt-auto border-t border-zinc-800 pt-6 space-y-1">
