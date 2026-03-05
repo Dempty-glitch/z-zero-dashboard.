@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, ChevronDown, Info, Copy, Check, ArrowRight, Wallet, Loader2 } from 'lucide-react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useSwitchChain } from 'wagmi';
+import { useAppKit } from '@reown/appkit/react';
 import { base, bsc, mainnet } from 'wagmi/chains';
 import { parseUnits } from 'viem';
 import { TOKEN_WHITELIST } from '@/lib/deposit/config';
@@ -32,10 +33,16 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
     const [selectedToken, setSelectedToken] = useState('USDC');
     const [amount, setAmount] = useState('10');
     const [copied, setCopied] = useState(false);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     // Wagmi Hooks
     const { isConnected, chainId: activeChainId, address: walletAddress } = useAccount();
     const { switchChain } = useSwitchChain();
+    const { open: openAppKit } = useAppKit();
     const { data: hash, writeContract, isPending: isConfirming, error: writeError } = useWriteContract();
 
     const { isLoading: isWaiting, isSuccess: isTxConfirmed, data: receipt } = useWaitForTransactionReceipt({
@@ -78,9 +85,9 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
         }
 
         // EVM auto-deposit flow
-        if (!isConnected) {
-            // AppKit button handles connection, but we can nudge
-            setError("Please connect your wallet first.");
+        if (!mounted || !isConnected) {
+            setError("Wallet not connected. Opening connection modal...");
+            openAppKit();
             return;
         }
 
@@ -249,7 +256,7 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                                                 "Continue"}
                                 </Button>
 
-                                {error && <p className="text-xs text-red-500 text-center">{error}</p>}
+                                {error && <p className="text-xs text-red-500 text-center animate-pulse">{error}</p>}
                                 {writeError && <p className="text-[10px] text-red-500/60 text-center truncate">{writeError.message}</p>}
                             </div>
                         </>
