@@ -23,6 +23,7 @@ export default function AdminOverview() {
         totalUsers: 0,
         totalTransactions: 0,
         activeAgents: 0,
+        pendingDeposits: 0,
         weeklyGrowth: 12.5
     });
     const [loading, setLoading] = useState(true);
@@ -53,11 +54,18 @@ export default function AdminOverview() {
                 .select('*', { count: 'exact', head: true })
                 .eq('is_active', true);
 
+            // 4. Fetch pending deposits for the alert
+            const { count: pendingCount } = await supabase
+                .from('crypto_deposits')
+                .select('*', { count: 'exact', head: true })
+                .eq('status', 'PENDING');
+
             setStats({
                 totalGMV: gmv,
                 totalUsers: userCount || 0,
                 totalTransactions: txCount,
                 activeAgents: agentCount || 0,
+                pendingDeposits: pendingCount || 0,
                 weeklyGrowth: 18.2 // Mocked for now, can be calculated from date ranges
             });
         } catch (err) {
@@ -164,14 +172,16 @@ export default function AdminOverview() {
                     <Card className="bg-zinc-900/40 border-zinc-800 border-l-4 border-l-red-500">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-sm flex justify-between">
-                                System Alerts <Badge className="bg-red-500 text-white text-[10px]">2</Badge>
+                                System Alerts <Badge className="bg-red-500 text-white text-[10px]">{stats.pendingDeposits > 0 ? 2 : 1}</Badge>
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            <div className="flex gap-2 text-xs p-2 bg-red-500/5 rounded-lg border border-red-500/10">
-                                <AlertCircle size={14} className="text-red-500 shrink-0" />
-                                <p className="text-zinc-400">3 Tron deposits pending manual confirmation (&gt; 10 mins)</p>
-                            </div>
+                            {stats.pendingDeposits > 0 && (
+                                <div className="flex gap-2 text-xs p-2 bg-red-500/5 rounded-lg border border-red-500/10">
+                                    <AlertCircle size={14} className="text-red-500 shrink-0" />
+                                    <p className="text-zinc-400">{stats.pendingDeposits} Tron/Base deposit(s) pending manual confirmation (&gt; 10 mins)</p>
+                                </div>
+                            )}
                             <div className="flex gap-2 text-xs p-2 bg-amber-500/5 rounded-lg border border-amber-500/10">
                                 <Clock size={14} className="text-amber-500 shrink-0" />
                                 <p className="text-zinc-400">Airwallex API latency detected (2.4s avg)</p>
