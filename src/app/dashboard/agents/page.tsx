@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Terminal, Plus, KeyRound, Copy, Trash2, Eye, EyeOff, Loader2, Zap } from "lucide-react";
+import { Terminal, Plus, KeyRound, Copy, Trash2, Eye, EyeOff, Loader2, Zap, ShieldCheck } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
@@ -11,6 +11,27 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase";
 
+const copyToClipboard = (text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(err => console.error("Clipboard fail:", err));
+    } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        textArea.style.top = "0";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+            document.execCommand('copy');
+        } catch (err) {
+            console.error('Fallback copy failed', err);
+        }
+        document.body.removeChild(textArea);
+    }
+};
+
 export default function AgentsPage() {
     const [loading, setLoading] = useState(true);
     const [agents, setAgents] = useState<any[]>([]);
@@ -18,6 +39,7 @@ export default function AgentsPage() {
     const [isCreating, setIsCreating] = useState(false);
     const [open, setOpen] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [copiedId, setCopiedId] = useState<string | null>(null);
 
     // Form states
     const [newName, setNewName] = useState("");
@@ -111,7 +133,6 @@ export default function AgentsPage() {
         <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex justify-between items-end">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-white">AI Agents</h1>
                     <p className="text-zinc-400 mt-1">Manage your agents' API Passports and spending boundaries.</p>
                 </div>
 
@@ -163,6 +184,34 @@ export default function AgentsPage() {
                     </DialogContent>
                 </Dialog>
             </div>
+
+            {/* Human Guide Section */}
+            <Card className="bg-emerald-500/5 border-emerald-500/20 border-dashed">
+                <CardContent className="pt-6">
+                    <div className="flex gap-4">
+                        <div className="p-3 bg-emerald-500/10 rounded-xl h-fit">
+                            <ShieldCheck className="text-emerald-500" size={24} />
+                        </div>
+                        <div className="space-y-2">
+                            <h3 className="font-bold text-emerald-400">Zero-Trust Protocol Guide</h3>
+                            <p className="text-sm text-zinc-400 leading-relaxed">
+                                To delegate payments to an AI (like Claude or AutoGPT), copy the <span className="text-zinc-200 font-mono">AGENT_PASSPORT</span> and paste it directly into the bot's chat.
+                                The bot will automatically discover the Z-ZERO MCP tools and the <a href="/docs/sop" className="underline text-emerald-500/80 hover:text-emerald-400">Standard Operating Procedure</a> to handle payments autonomously.
+                            </p>
+                            <div className="flex gap-4 pt-2">
+                                <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                    <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                    <span>Monthly limits enforced</span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                                    <div className="w-1 h-1 rounded-full bg-emerald-500" />
+                                    <span>Single-use tokens</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             <Card className="bg-zinc-900/40 border-zinc-800 backdrop-blur-sm overflow-hidden">
                 <CardHeader className="bg-zinc-900/20 border-b border-zinc-800">
@@ -217,10 +266,23 @@ export default function AgentsPage() {
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-8 w-8 text-zinc-500 hover:text-white"
-                                                    onClick={() => navigator.clipboard.writeText(agent.card_number_encrypted || '')}
+                                                    className={`h-8 w-8 transition-colors ${copiedId === agent.id ? 'text-emerald-500' : 'text-zinc-500 hover:text-white'}`}
+                                                    title="Copy Agent Passport Command"
+                                                    onClick={() => {
+                                                        const passportNote = `Initialize Z-ZERO Agent Passport:
+KEY: ${agent.card_number_encrypted}
+SOP: https://clawcard.store/docs/sop
+MCP: mcp://resources/sop (Built-in)
+ROLE: Autonomous Spending Agent
+RULE: JIT-Auth | 30m-Burn | Zero-PII
+---
+System: Follow the SOP to execute payments. Never ask for raw card data.`;
+                                                        copyToClipboard(passportNote);
+                                                        setCopiedId(agent.id);
+                                                        setTimeout(() => setCopiedId(null), 2000);
+                                                    }}
                                                 >
-                                                    <Copy className="h-4 w-4" />
+                                                    {copiedId === agent.id ? <Zap className="h-4 w-4 fill-current" /> : <Copy className="h-4 w-4" />}
                                                 </Button>
                                             </div>
                                         </TableCell>
