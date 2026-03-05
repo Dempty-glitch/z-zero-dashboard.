@@ -247,13 +247,15 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
 
                                 <Button
                                     onClick={handleContinue}
-                                    disabled={isConfirming || isWaiting || verifying || !evmAddress}
+                                    disabled={isConfirming || isWaiting || verifying || !evmAddress || (isConnected && (!amount || Number(amount) <= 0))}
                                     className="w-full h-14 bg-orange-600 hover:bg-orange-500 text-white rounded-2xl text-base font-bold shadow-lg shadow-orange-950/20 transition-all active:scale-[0.98]"
                                 >
-                                    {isConfirming ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20} /> Confirming...</span> :
-                                        isWaiting ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20} /> Waiting for Block...</span> :
-                                            verifying ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20} /> Verifying...</span> :
-                                                "Continue"}
+                                    {!mounted ? <Loader2 className="animate-spin" /> :
+                                        !isConnected ? "Connect Wallet to Transfer" :
+                                            isConfirming ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20} /> Confirming...</span> :
+                                                isWaiting ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20} /> Waiting for Block...</span> :
+                                                    verifying ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20} /> Verifying...</span> :
+                                                        "Continue"}
                                 </Button>
 
                                 {error && <p className="text-xs text-red-500 text-center animate-pulse">{error}</p>}
