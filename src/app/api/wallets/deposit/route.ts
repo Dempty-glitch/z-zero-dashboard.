@@ -1,18 +1,31 @@
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { EvmAdapter } from '@/lib/deposit/adapters/evm';
 
 export async function POST(request: Request) {
     try {
-        const { data: { session } } = await supabaseAdmin.auth.getSession();
+        const cookieStore = await cookies();
+        const supabase = createServerClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            {
+                cookies: {
+                    get(name) { return cookieStore.get(name)?.value },
+                },
+            }
+        );
+
+        const { data: { session } } = await supabase.auth.getSession();
+        const userId = session?.user?.id;
+
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized: Session required' }, { status: 401 });
+        }
 
         const body = await request.json();
         const { txHash, chainId } = body;
-        const userId = session?.user?.id || body.userId;
-
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
 
         if (!txHash || !chainId) {
             return NextResponse.json({ error: 'Missing txHash or chainId' }, { status: 400 });

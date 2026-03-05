@@ -18,8 +18,10 @@
 3. If not used within this window, the card is "Burned" (deactivated), and the allocated funds are **automatically refunded** to your main wallet balance.
 4. Total loss exposure is limited to the card's specific limit, and only for that 30-minute window.
 
-### Q: Are my real card details exposed to the AI?
-**Answer:** No. The AI Agent only receives a temporary token. Sensitive details (Full PAN, CVV, Expiry) are managed securely. The dashboard displays cards sequentially (e.g., "Card #0001") for human tracking, further obscuring sensitive financial data.
+### Q: Are my real card details exposed to the AI or to me?
+**Answer:** No. This is the core of Z-ZERO's **Zero-Trust** philosophy.
+1. **To the AI:** The Agent only receives a temporary token. It never sees the full card number (PAN), CVV, or Expiry.
+2. **To the Human (You):** The dashboard specifically **hides all card details**. You will only see identifying labels like "Card #0001", active limits, and countdown timers. This ensures that even if your dashboard session is compromised, your financial credentials remain secure. The cards are for machines to use, not for humans to copy.
 
 ## 🤖 Agent Management
 

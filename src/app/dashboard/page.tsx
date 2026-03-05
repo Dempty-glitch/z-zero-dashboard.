@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2, Clock, CreditCard } from "lucide-react";
+import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2, Clock, CreditCard, ShieldCheck } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import DepositWallets from "@/components/DepositWallets";
@@ -390,87 +390,117 @@ export default function DashboardPage() {
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <h2 className="text-xl font-bold flex items-center gap-2">
-                        <CreditCard className="text-cyan-400" size={24} />
-                        Active AI Virtual Cards
+                        <Activity className="text-emerald-400 animate-pulse" size={24} />
+                        Active AI Payment Tokens
                     </h2>
-                    <Badge variant="outline" className="text-zinc-500 border-zinc-800">
-                        Showing all cards
+                    <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/20 bg-emerald-500/5 px-2">
+                        <ShieldCheck size={10} className="mr-1" /> Zero-Disclosure Active
                     </Badge>
                 </div>
 
-                {virtualCards.length === 0 ? (
+                {virtualCards.filter(c => c.is_active && c.activeToken?.status === 'ACTIVE').length === 0 ? (
                     <div className="bg-zinc-900/30 border border-dashed border-zinc-800 rounded-3xl p-12 text-center text-zinc-500 italic">
                         No virtual cards issued yet. Use your AI Agent to request a payment.
                     </div>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                        {virtualCards.map((card) => {
-                            const isBurned = card.activeToken?.status === 'USED' || card.activeToken?.status === 'EXPIRED' || !card.is_active;
-                            return (
-                                <div
-                                    key={card.id}
-                                    className={`relative group p-5 rounded-3xl border transition-all duration-300 ${isBurned
-                                        ? 'bg-zinc-900/20 border-zinc-900 opacity-60 grayscale'
-                                        : 'bg-zinc-900/50 border-zinc-800 hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/5'
-                                        }`}
-                                >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div className="space-y-1">
-                                            <p className="text-xs font-bold text-zinc-500 uppercase tracking-tighter">{card.displayId}</p>
-                                            <h3 className="text-lg font-bold text-white tracking-tight">
-                                                ${Number(card.allocated_limit_usd).toFixed(2)}
-                                            </h3>
+                        {virtualCards
+                            .filter(c => c.is_active && c.activeToken?.status === 'ACTIVE')
+                            .map((card) => {
+                                const isBurned = false; // By definition in this filtered list
+                                return (
+                                    <div
+                                        key={card.id}
+                                        className={`relative group p-5 rounded-3xl border transition-all duration-300 ${isBurned
+                                            ? 'bg-zinc-900/20 border-zinc-900 opacity-60 grayscale'
+                                            : 'bg-zinc-900/50 border-zinc-800 hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/5'
+                                            }`}
+                                    >
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="space-y-1">
+                                                <p className="text-xs font-bold text-zinc-500 uppercase tracking-tighter">{card.displayId}</p>
+                                                <h3 className="text-lg font-bold text-white tracking-tight">
+                                                    ${Number(card.allocated_limit_usd).toFixed(2)}
+                                                </h3>
+                                            </div>
+                                            <Badge className={`${card.activeToken?.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                                card.activeToken?.status === 'USED' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
+                                                    'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                                }`}>
+                                                {card.activeToken?.status || 'INACTIVE'}
+                                            </Badge>
                                         </div>
-                                        <Badge className={`${card.activeToken?.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                            card.activeToken?.status === 'USED' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' :
-                                                'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
-                                            }`}>
-                                            {card.activeToken?.status || 'INACTIVE'}
+
+                                        <div className="space-y-3">
+                                            {!isBurned && card.activeToken?.expires_at && (
+                                                <div className="flex items-center gap-2 text-xs text-orange-400 bg-orange-500/5 border border-orange-500/10 rounded-xl px-3 py-2">
+                                                    <Clock size={14} className="animate-pulse" />
+                                                    <span>Expires in: </span>
+                                                    <CountdownTimer expiresAt={card.activeToken.expires_at} />
+                                                </div>
+                                            )}
+                                            {isBurned && (
+                                                <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-800/10 rounded-xl px-3 py-2">
+                                                    <Activity size={14} />
+                                                    <span>Card Permanently Burned</span>
+                                                </div>
+                                            )}
+                                            <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                                                <div
+                                                    className={`h-full transition-all duration-1000 ${isBurned ? 'bg-zinc-700 w-full' : 'bg-gradient-to-r from-cyan-500 to-blue-500 w-1/3 animate-pulse'}`}
+                                                ></div>
+                                            </div>
+                                        </div>
+
+                                        {/* Visual card patterns */}
+                                        <div className="absolute -bottom-2 -right-2 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
+                                            <CreditCard size={100} />
+                                        </div>
+
+                                        {/* Refund Button for Active Cards */}
+                                        {!isBurned && (
+                                            <div className="mt-4 pt-4 border-t border-zinc-800/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleRefund(card.id)}
+                                                    className="w-full text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:text-red-400 hover:bg-red-500/5 rounded-xl h-9"
+                                                >
+                                                    Refund to Wallet
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                    </div>
+                )}
+
+                {/* History/Archive Section */}
+                {virtualCards.some(c => !c.is_active || c.activeToken?.status !== 'ACTIVE') && (
+                    <div className="mt-12 space-y-4 pt-12 border-t border-zinc-900">
+                        <h3 className="text-sm font-bold text-zinc-500 uppercase tracking-widest px-1">
+                            Recent History
+                        </h3>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 opacity-70">
+                            {virtualCards
+                                .filter(c => !c.is_active || (c.activeToken?.status !== 'ACTIVE' && c.activeToken !== null))
+                                .slice(0, 4)
+                                .map((card) => (
+                                    <div
+                                        key={card.id}
+                                        className="p-4 rounded-2xl bg-zinc-900/30 border border-zinc-900 flex justify-between items-center grayscale"
+                                    >
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] text-zinc-600 font-mono font-bold leading-none mb-1">{card.displayId}</span>
+                                            <span className="text-sm font-bold text-zinc-400">${Number(card.allocated_limit_usd).toFixed(0)}</span>
+                                        </div>
+                                        <Badge variant="outline" className="text-[9px] h-5 border-zinc-800 text-zinc-600">
+                                            {card.activeToken?.status === 'USED' ? 'Settled' : 'Burned'}
                                         </Badge>
                                     </div>
-
-                                    <div className="space-y-3">
-                                        {!isBurned && card.activeToken?.expires_at && (
-                                            <div className="flex items-center gap-2 text-xs text-orange-400 bg-orange-500/5 border border-orange-500/10 rounded-xl px-3 py-2">
-                                                <Clock size={14} className="animate-pulse" />
-                                                <span>Expires in: </span>
-                                                <CountdownTimer expiresAt={card.activeToken.expires_at} />
-                                            </div>
-                                        )}
-                                        {isBurned && (
-                                            <div className="flex items-center gap-2 text-xs text-zinc-500 bg-zinc-800/10 rounded-xl px-3 py-2">
-                                                <Activity size={14} />
-                                                <span>Card Permanently Burned</span>
-                                            </div>
-                                        )}
-                                        <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
-                                            <div
-                                                className={`h-full transition-all duration-1000 ${isBurned ? 'bg-zinc-700 w-full' : 'bg-gradient-to-r from-cyan-500 to-blue-500 w-1/3 animate-pulse'}`}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    {/* Visual card patterns */}
-                                    <div className="absolute -bottom-2 -right-2 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
-                                        <CreditCard size={100} />
-                                    </div>
-
-                                    {/* Refund Button for Active Cards */}
-                                    {!isBurned && (
-                                        <div className="mt-4 pt-4 border-t border-zinc-800/50 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                onClick={() => handleRefund(card.id)}
-                                                className="w-full text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:text-red-400 hover:bg-red-500/5 rounded-xl h-9"
-                                            >
-                                                Refund to Wallet
-                                            </Button>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
+                                ))}
+                        </div>
                     </div>
                 )}
             </div>

@@ -12,13 +12,12 @@ CREATE TABLE public.users (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 3. Create WALLETS table
+-- 3. Create WALLETS table (Main internal balance)
 CREATE TABLE public.wallets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
   crypto_currency TEXT DEFAULT 'USDC',
   balance NUMERIC(10, 2) DEFAULT 0.00,
-  deposit_address TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
