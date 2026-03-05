@@ -270,6 +270,15 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                                 {error && <p className="text-xs text-red-500 text-center animate-pulse">{error}</p>}
                                 {writeError && <p className="text-[10px] text-red-500/60 text-center truncate">{writeError.message}</p>}
                             </div>
+
+                            <div className="pt-4 border-t border-zinc-900">
+                                <button
+                                    onClick={() => setStep('manual')}
+                                    className="w-full py-2 text-xs font-medium text-emerald-500/70 hover:text-emerald-400 transition-colors flex items-center justify-center gap-2"
+                                >
+                                    <Info size={14} /> Sent funds? Verify with TxHash manually
+                                </button>
+                            </div>
                         </>
                     )}
 
@@ -305,17 +314,6 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                             <Button onClick={onClose} className="w-full h-14 bg-white text-black hover:bg-zinc-200 rounded-2xl font-bold">
                                 Done
                             </Button>
-                        </div>
-                    )}
-
-                    {step === 'select' && (
-                        <div className="pt-4 border-t border-zinc-900">
-                            <button
-                                onClick={() => setStep('manual')}
-                                className="w-full py-2 text-xs text-zinc-500 hover:text-emerald-400 transition-colors flex items-center justify-center gap-2"
-                            >
-                                <Info size={14} /> Already sent funds? Paste TxHash manually
-                            </button>
                         </div>
                     )}
 
