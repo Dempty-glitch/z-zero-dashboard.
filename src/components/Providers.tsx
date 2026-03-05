@@ -13,7 +13,9 @@ if (typeof window !== 'undefined' && projectId) {
         networks,
         projectId,
         features: {
-            analytics: true
+            analytics: true,
+            email: false, // Hide email login in wallet modal
+            socials: []   // Hide social logins in wallet modal
         },
         themeMode: 'dark',
         themeVariables: {
