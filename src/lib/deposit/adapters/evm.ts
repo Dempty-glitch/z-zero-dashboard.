@@ -43,6 +43,15 @@ export class EvmAdapter implements DepositAdapter {
                     // Specific handling for common rate limits
                     if (data.error.message.includes('limit') || data.error.code === -32005) {
                         console.warn(`[EvmAdapter] Rate limit on ${url}, trying next...`);
+
+                        // [PA-4] Log system alert to DB for Admin monitoring
+                        await supabaseAdmin.from('system_health').insert({
+                            component: `RPC_${this.chainId.toUpperCase()}`,
+                            status: 'WARNING',
+                            message: `Rate limit exceeded on provider: ${url}`,
+                            metadata: { url, error: data.error, method }
+                        });
+
                         lastError = data.error;
                         continue;
                     }
@@ -51,6 +60,15 @@ export class EvmAdapter implements DepositAdapter {
                 return data.result;
             } catch (err: any) {
                 console.warn(`[EvmAdapter] RPC Error on ${url}:`, err.message);
+
+                // Track non-limit errors as well if they persist
+                await supabaseAdmin.from('system_health').insert({
+                    component: `RPC_${this.chainId.toUpperCase()}`,
+                    status: 'ERROR',
+                    message: `RPC error: ${err.message}`,
+                    metadata: { url, method, error: err.message }
+                });
+
                 lastError = err;
             }
         }

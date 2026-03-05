@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     }
 
     try {
-        console.log('[CRON] Starting daily reconciliation...');
+        console.log('[CRON] Starting optimized smart reconciliation...');
         const { data: wallets } = await supabaseAdmin.from('deposit_wallets').select('*');
         if (!wallets) return NextResponse.json({ success: true, processed: 0 });
 
@@ -22,7 +22,9 @@ export async function GET(request: Request) {
             const userId = walletRow.user_id;
             const evmAddress = walletRow.evm_address.toLowerCase();
             const recipientTopic = '0x000000000000000000000000' + evmAddress.slice(2);
+
             let scanCursors = walletRow.scan_cursors || {};
+            let intentBlocks = walletRow.intent_blocks || {};
 
             for (const chainId of evmChains) {
                 const adapter = new EvmAdapter(chainId);
@@ -30,19 +32,41 @@ export async function GET(request: Request) {
 
                 try {
                     const latestBlock = await adapter.getLatestBlock();
-                    let startBlock = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : (latestBlock - 50000);
+
+                    // [PA-1] SMART SCAN LOGIC:
+                    // 1. If user has an active "Intent" (clicked deposit recently)
+                    // 2. We scan from Intent - 100 blocks to Latest
+                    // 3. Otherwise, use the last saved cursor or fallback to -1000 blocks (instead of -50000)
+
+                    const intentBlock = intentBlocks[chainId];
+                    const intentTime = intentBlocks[`${chainId}_at`];
+                    const isRecentIntent = intentTime && (new Date().getTime() - new Date(intentTime).getTime()) < 2 * 60 * 60 * 1000; // 2 hours
+
+                    let startBlock: number;
+                    if (isRecentIntent && intentBlock) {
+                        startBlock = Math.max(0, intentBlock - 100);
+                        console.log(`[CRON] FAST SCAN for user ${userId} on ${chainId} from block ${startBlock}`);
+                    } else {
+                        // Standard cursor sync (much smaller window to avoid rate limits)
+                        startBlock = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : (latestBlock - 1000);
+                    }
 
                     if (startBlock >= latestBlock) continue;
 
+                    // Limit scan range to 1000 blocks per run to prevent RPC "limit exceeded" errors
+                    const safeToBlock = Math.min(latestBlock, startBlock + 1000);
+
                     for (const [symbol, info] of Object.entries(whitelist)) {
-                        const logs = await adapter.scanLogs(startBlock, latestBlock, info.contract.toLowerCase(), recipientTopic);
+                        const logs = await adapter.scanLogs(startBlock, safeToBlock, info.contract.toLowerCase(), recipientTopic);
 
                         for (const log of logs) {
                             const txHash = log.transactionHash;
+                            const uniqueDepositId = `${chainId}_${txHash}_tokentx`;
+
                             const { data: existing } = await supabaseAdmin
                                 .from('crypto_deposits')
                                 .select('id')
-                                .eq('tx_hash', txHash)
+                                .eq('tx_hash', uniqueDepositId)
                                 .single();
 
                             if (existing) continue;
@@ -50,11 +74,11 @@ export async function GET(request: Request) {
                             const amountRaw = BigInt(log.data);
                             const amountUsd = Number(amountRaw) / Math.pow(10, info.decimals);
 
-                            // Insert & Update Balance (simulated logic here, same as scan route)
+                            // Record Deposit
                             await supabaseAdmin.from('crypto_deposits').insert({
                                 user_id: userId,
                                 chain_id: chainId,
-                                tx_hash: txHash,
+                                tx_hash: uniqueDepositId,
                                 sender_address: '0x' + log.topics[1].slice(26),
                                 token_symbol: symbol,
                                 amount_raw: amountRaw.toString(),
@@ -62,20 +86,19 @@ export async function GET(request: Request) {
                                 status: 'CONFIRMED',
                             });
 
+                            // Update Balance
                             const { data: userWallet } = await supabaseAdmin.from('wallets').select('balance').eq('user_id', userId).single();
                             if (userWallet) {
                                 await supabaseAdmin.from('wallets').update({ balance: Number(userWallet.balance) + amountUsd }).eq('user_id', userId);
                             }
-
                             totalCreditedAcrossAll += amountUsd;
                         }
                     }
-                    scanCursors[chainId] = latestBlock.toString();
+                    scanCursors[chainId] = safeToBlock.toString();
                 } catch (e: any) {
-                    console.error(`[CRON] Error for user ${userId} on ${chainId}:`, e.message);
+                    console.error(`[CRON] Throttled Error for user ${userId} on ${chainId}:`, e.message);
                 }
             }
-
             await supabaseAdmin.from('deposit_wallets').update({ scan_cursors: scanCursors }).eq('user_id', userId);
         }
 

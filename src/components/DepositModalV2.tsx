@@ -28,7 +28,7 @@ const CHAINS = [
 ];
 
 export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddress, userId, onSuccess }: DepositModalV2Props) {
-    const [step, setStep] = useState<'select' | 'confirm' | 'success'>('select');
+    const [step, setStep] = useState<'select' | 'confirm' | 'success' | 'manual'>('select');
     const [selectedChainId, setSelectedChainId] = useState('base');
     const [selectedToken, setSelectedToken] = useState('USDC');
     const [amount, setAmount] = useState('1');
@@ -58,7 +58,16 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
         else if (selectedChainId === 'bsc') setSelectedToken('USDT');
         else if (selectedChainId === 'ethereum') setSelectedToken('USDT');
         else if (selectedChainId === 'tron') setSelectedToken('USDT');
-    }, [selectedChainId]);
+
+        // [PA-1] Record "Intent" to start scanning from this block
+        if (isOpen && (selectedChainId === 'bsc' || selectedChainId === 'base' || selectedChainId === 'ethereum')) {
+            fetch('/api/wallets/intent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chainId: selectedChainId })
+            }).catch(e => console.warn("Failed to record intent:", e));
+        }
+    }, [selectedChainId, isOpen]);
 
     const activeChainConfig = CHAINS.find(c => c.id === selectedChainId);
     const availableTokens = TOKEN_WHITELIST[selectedChainId] ? Object.keys(TOKEN_WHITELIST[selectedChainId]) : ['USDT'];
@@ -295,6 +304,64 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                             </div>
                             <Button onClick={onClose} className="w-full h-14 bg-white text-black hover:bg-zinc-200 rounded-2xl font-bold">
                                 Done
+                            </Button>
+                        </div>
+                    )}
+
+                    {step === 'select' && (
+                        <div className="pt-4 border-t border-zinc-900">
+                            <button
+                                onClick={() => setStep('manual')}
+                                className="w-full py-2 text-xs text-zinc-500 hover:text-emerald-400 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Info size={14} /> Already sent funds? Paste TxHash manually
+                            </button>
+                        </div>
+                    )}
+
+                    {step === 'manual' && (
+                        <div className="space-y-6 animate-in slide-in-from-bottom-4">
+                            <div className="space-y-2">
+                                <h3 className="text-lg font-bold text-white">Manual Verification</h3>
+                                <p className="text-xs text-zinc-500">
+                                    If the system is slow to detect your {selectedToken} on {selectedChainId.toUpperCase()}, paste your Transaction Hash below for instant credit.
+                                </p>
+                            </div>
+
+                            <div className="space-y-3">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-bold text-zinc-600 uppercase">Transaction Hash (TxID)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="0x..."
+                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-emerald-400 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                        onChange={(e) => {
+                                            const val = e.target.value.trim();
+                                            if (val.length > 20) {
+                                                setVerifying(true);
+                                                fetch('/api/wallets/deposit', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ userId, txHash: val, chainId: selectedChainId })
+                                                }).then(res => res.json()).then(d => {
+                                                    if (d.success) {
+                                                        setStep('success');
+                                                        if (onSuccess) onSuccess();
+                                                    } else {
+                                                        setError(d.error || "Invalid TxHash");
+                                                    }
+                                                }).catch(e => setError(e.message)).finally(() => setVerifying(false));
+                                            }
+                                        }}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-zinc-600 italic">
+                                    * Found on {selectedChainId === 'bsc' ? 'BscScan' : 'BaseScan'} after confirming in your wallet.
+                                </p>
+                            </div>
+
+                            <Button onClick={() => setStep('select')} variant="ghost" className="w-full text-zinc-500 hover:text-white">
+                                Back to Selection
                             </Button>
                         </div>
                     )}
