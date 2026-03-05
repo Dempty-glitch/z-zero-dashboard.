@@ -75,4 +75,13 @@ CREATE POLICY "Users can view own wallets" ON public.wallets FOR SELECT USING (a
 CREATE POLICY "Users can insert own wallet" ON public.wallets FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can view own cards" ON public.cards FOR SELECT USING (auth.uid() = user_id);
--- Transactions and tokens are linked through cards/users, complex RLS can be added later, for now we secure the Edge Functions.
+CREATE POLICY "Users can insert own cards" ON public.cards FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own cards" ON public.cards FOR UPDATE USING (auth.uid() = user_id);
+
+-- 8. Policies for Tokens and Transactions
+CREATE POLICY "Users can view own tokens" ON public.tokens FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.cards WHERE cards.id = tokens.card_id AND cards.user_id = auth.uid())
+);
+CREATE POLICY "Users can view own transactions" ON public.transactions FOR SELECT USING (
+  EXISTS (SELECT 1 FROM public.cards WHERE cards.id = transactions.card_id AND cards.user_id = auth.uid())
+);

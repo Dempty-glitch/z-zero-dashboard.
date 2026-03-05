@@ -16,6 +16,8 @@ export default function AgentsPage() {
     const [agents, setAgents] = useState<any[]>([]);
     const [showKey, setShowKey] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [open, setOpen] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     // Form states
     const [newName, setNewName] = useState("");
@@ -45,27 +47,27 @@ export default function AgentsPage() {
     const handleCreateAgent = async () => {
         if (!newName) return;
         setIsCreating(true);
+        setError(null);
         try {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) return;
 
-            // In a real scenario, this would call an API that interacts with Airwallex
-            // For now, we simulate agent key generation in the DB
-            const { error } = await supabase.from("cards").insert({
+            const { error: insertError } = await supabase.from("cards").insert({
                 user_id: session.user.id,
                 alias: newName,
                 allocated_limit_usd: Number(newLimit),
                 is_active: true,
-                // Mock encrypted details for UI
                 card_number_encrypted: `zk_live_${Math.random().toString(36).substring(7)}`
             });
 
-            if (error) throw error;
+            if (insertError) throw insertError;
 
             setNewName("");
+            setOpen(false);
             fetchAgents();
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
+            setError(err.message || "Failed to create agent key");
         } finally {
             setIsCreating(false);
         }
@@ -92,7 +94,7 @@ export default function AgentsPage() {
                     <p className="text-zinc-400 mt-1">Manage your agents' API Passports and spending boundaries.</p>
                 </div>
 
-                <Dialog>
+                <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
                         <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)]">
                             <Plus className="mr-2 h-4 w-4" /> Create Agent Key
@@ -126,6 +128,7 @@ export default function AgentsPage() {
                                     className="bg-zinc-900 border-zinc-800 text-zinc-100 focus:ring-emerald-500"
                                 />
                             </div>
+                            {error && <p className="text-sm text-red-500 font-medium">{error}</p>}
                         </div>
                         <DialogFooter>
                             <Button
