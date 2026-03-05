@@ -31,7 +31,7 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
     const [step, setStep] = useState<'select' | 'confirm' | 'success'>('select');
     const [selectedChainId, setSelectedChainId] = useState('base');
     const [selectedToken, setSelectedToken] = useState('USDC');
-    const [amount, setAmount] = useState('10');
+    const [amount, setAmount] = useState('1');
     const [copied, setCopied] = useState(false);
     const [mounted, setMounted] = useState(false);
 
