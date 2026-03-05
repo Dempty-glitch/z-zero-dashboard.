@@ -280,6 +280,29 @@ export default function DashboardPage() {
         }
     };
 
+    const handleRefund = async (cardId: string) => {
+        if (!user) return;
+        if (!confirm("Are you sure you want to cancel this card and refund the funds to your wallet?")) return;
+
+        try {
+            const res = await fetch("/api/cards/refund", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ cardId, userId: user.id }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                alert(data.message);
+                fetchDashboardData(user.id);
+            } else {
+                alert(data.error);
+            }
+        } catch (err) {
+            console.error("Refund Error:", err);
+            alert("Failed to process refund");
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex h-[80vh] items-center justify-center">
@@ -431,6 +454,20 @@ export default function DashboardPage() {
                                     <div className="absolute -bottom-2 -right-2 opacity-5 pointer-events-none group-hover:opacity-10 transition-opacity">
                                         <CreditCard size={100} />
                                     </div>
+
+                                    {/* Refund Button for Active Cards */}
+                                    {!isBurned && (
+                                        <div className="mt-4 pt-4 border-t border-zinc-800/50 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleRefund(card.id)}
+                                                className="w-full text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:text-red-400 hover:bg-red-500/5 rounded-xl h-9"
+                                            >
+                                                Refund to Wallet
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
