@@ -21,10 +21,10 @@ interface DepositModalV2Props {
 }
 
 const CHAINS = [
-    { id: 'base', name: 'Base', icon: '🔵', color: 'bg-blue-500', min: 1 },
-    { id: 'bsc', name: 'BNB Smart Chain', icon: '🟡', color: 'bg-yellow-500', min: 1 },
-    { id: 'ethereum', name: 'Ethereum', icon: '🟣', color: 'bg-purple-500', min: 10 },
-    { id: 'tron', name: 'Tron (TRC-20)', icon: '🔴', color: 'bg-red-500', min: 1 },
+    { id: 'base', name: 'Base', standard: 'ERC-20', icon: '🔵', color: 'bg-blue-500', min: 1 },
+    { id: 'bsc', name: 'BNB Smart Chain', standard: 'BEP-20', icon: '🟡', color: 'bg-yellow-500', min: 1 },
+    { id: 'ethereum', name: 'Ethereum', standard: 'ERC-20', icon: '🟣', color: 'bg-purple-500', min: 10 },
+    { id: 'tron', name: 'Tron', standard: 'TRC-20', icon: '🔴', color: 'bg-red-500', min: 1 },
 ];
 
 export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddress, userId, onSuccess }: DepositModalV2Props) {
@@ -236,7 +236,7 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                             <div className="bg-orange-500/10 border border-orange-500/20 rounded-2xl p-4 flex gap-3">
                                 <Info className="text-orange-500 shrink-0" size={18} />
                                 <p className="text-[11px] text-orange-200/80 leading-relaxed">
-                                    Please only send <span className="text-orange-400 font-bold">{selectedToken}</span> via the <span className="text-orange-400 font-bold">{activeChainConfig?.name}</span> network. Sending other funds to this address will result in permanent loss.
+                                    Please only send <span className="text-orange-400 font-bold">{selectedToken}</span> via the <span className="text-orange-400 font-bold">{activeChainConfig?.name} ({activeChainConfig?.standard})</span> network. Sending other funds to this address will result in permanent loss.
                                 </p>
                             </div>
 
