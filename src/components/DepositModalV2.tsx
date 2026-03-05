@@ -65,6 +65,12 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
 
     const handleContinue = async () => {
         setError(null);
+
+        if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+            setError("Please enter a valid amount");
+            return;
+        }
+
         if (selectedChainId === 'tron') {
             // Tron is always manual for now
             setStep('confirm');
@@ -185,9 +191,20 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                             </div>
 
                             <div className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-5 space-y-4">
-                                <div className="flex items-center justify-between text-sm">
-                                    <span className="text-zinc-500">Min Deposit</span>
-                                    <span className="text-white font-medium">${activeChainConfig?.min} {selectedToken}</span>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Amount to Deposit</label>
+                                    <div className="relative group">
+                                        <input
+                                            type="number"
+                                            value={amount}
+                                            onChange={(e) => setAmount(e.target.value)}
+                                            placeholder="0.00"
+                                            className="w-full bg-black/40 border border-zinc-800 text-white rounded-2xl px-4 py-3.5 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all font-mono text-lg"
+                                        />
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 font-bold pointer-events-none">
+                                            {selectedToken}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
