@@ -7,40 +7,11 @@ import { TronAdapter } from '@/lib/deposit/adapters/tron';
 
 export async function POST(request: Request) {
     try {
-        const cookieStore = await cookies();
-        const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                cookies: {
-                    getAll() { return cookieStore.getAll() },
-                    setAll(cookiesToSet) {
-                        try {
-                            cookiesToSet.forEach(({ name, value, options }) =>
-                                cookieStore.set(name, value, options)
-                            )
-                        } catch {
-                            // The `setAll` method was called from a Server Action or Route Handler.
-                            // This can be ignored if you have middleware refreshing
-                            // user sessions.
-                        }
-                    },
-                },
-            }
-        );
-
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id;
-
-        if (!userId) {
-            return NextResponse.json({ error: 'Unauthorized: Session required' }, { status: 401 });
-        }
-
         const body = await request.json();
-        const { txHash, chainId } = body;
+        const { userId, txHash, chainId } = body;
 
-        if (!txHash || !chainId) {
-            return NextResponse.json({ error: 'Missing txHash or chainId' }, { status: 400 });
+        if (!userId || !txHash || !chainId) {
+            return NextResponse.json({ error: 'Missing userId, txHash or chainId' }, { status: 400 });
         }
 
         console.log(`[DEPOSIT] Verifying ${txHash} on ${chainId} for user ${userId}`);
