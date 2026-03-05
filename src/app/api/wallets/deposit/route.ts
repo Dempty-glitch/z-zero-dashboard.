@@ -13,13 +13,24 @@ export async function POST(request: Request) {
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             {
                 cookies: {
-                    get(name) { return cookieStore.get(name)?.value },
+                    getAll() { return cookieStore.getAll() },
+                    setAll(cookiesToSet) {
+                        try {
+                            cookiesToSet.forEach(({ name, value, options }) =>
+                                cookieStore.set(name, value, options)
+                            )
+                        } catch {
+                            // The `setAll` method was called from a Server Action or Route Handler.
+                            // This can be ignored if you have middleware refreshing
+                            // user sessions.
+                        }
+                    },
                 },
             }
         );
 
-        const { data: { session } } = await supabase.auth.getSession();
-        const userId = session?.user?.id;
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized: Session required' }, { status: 401 });

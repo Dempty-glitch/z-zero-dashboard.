@@ -418,16 +418,6 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                                 </Button>
 
                                 {error && <p className="text-[11px] text-red-400 text-center animate-in fade-in slide-in-from-top-1">{error}</p>}
-
-                                <button
-                                    onClick={() => {
-                                        setError(null);
-                                        setStep('select');
-                                    }}
-                                    className="w-full py-2 text-xs font-medium text-zinc-500 hover:text-white transition-colors"
-                                >
-                                    Cancel & Return
-                                </button>
                             </div>
                         </div>
                     )}
