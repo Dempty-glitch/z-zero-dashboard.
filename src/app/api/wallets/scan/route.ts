@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { EvmAdapter } from '@/lib/deposit/adapters/evm';
 import { TOKEN_WHITELIST } from '@/lib/deposit/config';
-
-// Define explorer APIs
-const EXPLORER_APIS: Record<string, { url: string; key: string | undefined }> = {
-    base: { url: 'https://api.basescan.org/api', key: process.env.BASESCAN_API_KEY },
-    ethereum: { url: 'https://api.etherscan.io/api', key: process.env.ETHERSCAN_API_KEY },
-    bsc: { url: 'https://api.bscscan.com/api', key: process.env.BSCSCAN_API_KEY },
-};
 
 export async function POST(request: Request) {
     try {
@@ -20,7 +14,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        // 1. Fetch user's deposit wallets
+        // 1. Fetch user's deposit wallet
         const { data: walletRow, error: walletError } = await supabaseAdmin
             .from('deposit_wallets')
             .select('*')
@@ -28,153 +22,133 @@ export async function POST(request: Request) {
             .single();
 
         if (walletError || !walletRow) {
-            return NextResponse.json({ error: 'Deposit wallets not found' }, { status: 404 });
+            return NextResponse.json({ error: 'Deposit wallet not found' }, { status: 404 });
         }
 
         const evmAddress = walletRow.evm_address.toLowerCase();
+        // Topic for logs: 32 bytes left-padded address
+        const recipientTopic = '0x000000000000000000000000' + evmAddress.slice(2);
+
         let scanCursors = walletRow.scan_cursors || {};
         let totalCreditedUsd = 0;
         let newDeposits: Array<{ chain: string, amount: number, token: string, txHash: string }> = [];
         let errors: string[] = [];
 
-        // 2. Scan each EVM network using Block Explorer APIs
+        // 2. Scan each whitelisted EVM network
         const evmChains = ['base', 'ethereum', 'bsc'];
 
         for (const chainId of evmChains) {
-            const apiConfig = EXPLORER_APIS[chainId];
             const whitelist = TOKEN_WHITELIST[chainId];
-            if (!apiConfig || !whitelist) continue;
+            if (!whitelist) continue;
 
-            if (!apiConfig.key) {
-                errors.push(`Missing API Key for ${chainId.toUpperCase()}Scan.`);
-                continue;
-            }
+            console.log(`[SCAN] Starting ${chainId} scan for ${evmAddress}...`);
+            const adapter = new EvmAdapter(chainId);
 
             try {
-                // For safety on first run, we scan from a reasonable block 
-                // Or startblock 0 if no cursor exists
+                // Determine block range
+                const latestBlock = await adapter.getLatestBlock();
                 let startBlock = scanCursors[chainId] ? parseInt(scanCursors[chainId]) : 0;
 
-                const fetchUrl = `${apiConfig.url}?module=account&action=tokentx&address=${evmAddress}&startblock=${startBlock}&endblock=999999999&sort=asc&apikey=${apiConfig.key}`;
-
-                const res = await fetch(fetchUrl);
-                const data = await res.json();
-
-                if (data.status !== '1' && data.message !== 'No transactions found') {
-                    throw new Error(data.result || data.message || 'Unknown API Error');
+                // If no cursor, scan last ~8 days (~250k blocks)
+                const MAX_LOOKBACK = 250000;
+                if (startBlock === 0 || (latestBlock - startBlock) > 500000) {
+                    startBlock = Math.max(0, latestBlock - MAX_LOOKBACK);
                 }
 
-                const transfers: any[] = data.result || [];
-                let highestBlockScanned = startBlock;
+                if (startBlock >= latestBlock) {
+                    console.log(`[SCAN] ${chainId} already up to date at block ${latestBlock}`);
+                    continue;
+                }
 
-                for (const tx of transfers) {
-                    const blockNumber = parseInt(tx.blockNumber);
-                    if (blockNumber > highestBlockScanned) {
-                        highestBlockScanned = blockNumber;
-                    }
+                // Scan for each whitelisted token
+                for (const [symbol, info] of Object.entries(whitelist)) {
+                    console.log(`[SCAN] ${chainId}: Looking for ${symbol} logs...`);
+                    const logs = await adapter.scanLogs(startBlock, latestBlock, info.contract.toLowerCase(), recipientTopic);
 
-                    // Only process INCOMING transfers
-                    if (tx.to.toLowerCase() !== evmAddress) continue;
+                    for (const log of logs) {
+                        const txHash = log.transactionHash;
 
-                    const tokenAddress = tx.contractAddress.toLowerCase();
-                    const txHash = tx.hash;
+                        // Idempotency check: Use hash + logIndex for absolute uniqueness
+                        const uniqueId = `${chainId}_${txHash}_${parseInt(log.logIndex, 16)}`;
 
-                    // Match token against whitelist
-                    let matchedSymbol = '';
-                    let matchedDecimals = 6;
+                        const { data: existing } = await supabaseAdmin
+                            .from('crypto_deposits')
+                            .select('id')
+                            .filter('tx_hash', 'eq', txHash) // Simple check for hash first
+                            .single();
 
-                    // Typecast Object.entries for strict TS
-                    const whitelistEntries = Object.entries(whitelist) as [string, { contract: string, decimals: number }][];
-                    for (const [sym, info] of whitelistEntries) {
-                        if (info.contract.toLowerCase() === tokenAddress) {
-                            matchedSymbol = sym;
-                            matchedDecimals = info.decimals;
-                            break;
-                        }
-                    }
+                        if (existing) continue;
 
-                    if (!matchedSymbol) continue; // Unrecognized token
+                        const amountRaw = BigInt(log.data);
+                        const amountUsd = Number(amountRaw) / Math.pow(10, info.decimals);
+                        const sender = '0x' + log.topics[1].slice(26);
 
-                    const amountRaw = tx.value; // It's a string from explorer
-                    const amountUsd = Number(amountRaw) / Math.pow(10, matchedDecimals);
+                        if (amountUsd <= 0) continue;
 
-                    if (amountUsd <= 0) continue;
-
-                    // Idempotency check 
-                    const uniqueDepositId = `${chainId}_${txHash}_tokentx`;
-
-                    const { data: existing } = await supabaseAdmin
-                        .from('crypto_deposits')
-                        .select('id')
-                        .eq('tx_hash', uniqueDepositId)
-                        .single();
-
-                    if (existing) continue; // Already processed
-
-                    const sender = tx.from;
-
-                    // Credit User
-                    await supabaseAdmin.from('crypto_deposits').insert({
-                        user_id: userId,
-                        chain_id: chainId,
-                        tx_hash: uniqueDepositId,
-                        sender_address: sender,
-                        token_symbol: matchedSymbol,
-                        amount_raw: amountRaw,
-                        amount_usd: amountUsd,
-                        status: 'CONFIRMED',
-                    });
-
-                    // Update wallet balance
-                    const { data: userWallet } = await supabaseAdmin
-                        .from('wallets')
-                        .select('balance')
-                        .eq('user_id', userId)
-                        .single();
-
-                    if (userWallet) {
-                        await supabaseAdmin
-                            .from('wallets')
-                            .update({ balance: Number(userWallet.balance) + amountUsd })
-                            .eq('user_id', userId);
-                    } else {
-                        await supabaseAdmin.from('wallets').insert({
+                        // Insert Deposit
+                        const { error: insertError } = await supabaseAdmin.from('crypto_deposits').insert({
                             user_id: userId,
-                            balance: amountUsd,
+                            chain_id: chainId,
+                            tx_hash: txHash,
+                            sender_address: sender,
+                            token_symbol: symbol,
+                            amount_raw: amountRaw.toString(),
+                            amount_usd: amountUsd,
+                            status: 'CONFIRMED',
                         });
-                    }
 
-                    totalCreditedUsd += amountUsd;
-                    newDeposits.push({ chain: chainId, amount: amountUsd, token: matchedSymbol, txHash });
+                        if (insertError) {
+                            console.error(`[SCAN] Failed to insert deposit for ${txHash}:`, insertError.message);
+                            continue;
+                        }
+
+                        // Update Balance
+                        const { data: userWallet } = await supabaseAdmin
+                            .from('wallets')
+                            .select('balance')
+                            .eq('user_id', userId)
+                            .single();
+
+                        if (userWallet) {
+                            await supabaseAdmin
+                                .from('wallets')
+                                .update({ balance: Number(userWallet.balance) + amountUsd })
+                                .eq('user_id', userId);
+                        } else {
+                            await supabaseAdmin.from('wallets').insert({
+                                user_id: userId,
+                                balance: amountUsd,
+                            });
+                        }
+
+                        totalCreditedUsd += amountUsd;
+                        newDeposits.push({ chain: chainId, amount: amountUsd, token: symbol, txHash });
+                    }
                 }
 
-                // Wait 250ms between Explorer API calls to respect free tier rate limits (5 req/sec)
-                await new Promise(resolve => setTimeout(resolve, 250));
-
-                scanCursors[chainId] = highestBlockScanned.toString();
+                // Update cursor
+                scanCursors[chainId] = latestBlock.toString();
 
             } catch (err: any) {
-                console.error(`Error scanning ${chainId}:`, err);
-                errors.push(`${chainId.toUpperCase()} Scan Error: ${err.message}`);
+                console.error(`[SCAN] Error scanning ${chainId}:`, err.message);
+                errors.push(`${chainId}: ${err.message}`);
+                // Continue to next chain
             }
         }
 
-        // 3. Save updated cursors
+        // 3. Save updated scan cursors
         await supabaseAdmin
             .from('deposit_wallets')
             .update({ scan_cursors: scanCursors })
             .eq('user_id', userId);
 
-        if (errors.length > 0 && totalCreditedUsd === 0) {
-            return NextResponse.json({ error: 'Scan Failed: ' + errors.join(' | ') }, { status: 400 });
-        }
-
         return NextResponse.json({
             success: true,
             totalCredited: totalCreditedUsd,
             newDeposits,
+            errors: errors.length > 0 ? errors : undefined,
             message: totalCreditedUsd > 0
-                ? `$${totalCreditedUsd.toFixed(2)} found and credited!` + (errors.length > 0 ? ` (Issues on some networks)` : '')
+                ? `Successfully found and credited $${totalCreditedUsd.toFixed(2)}!`
                 : 'No new deposits found.',
         });
 

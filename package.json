@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@reown/appkit": "^1.8.19",
+    "@reown/appkit-adapter-wagmi": "^1.8.19",
     "@scure/bip32": "^2.0.1",
     "@scure/bip39": "^2.0.1",
     "@supabase/ssr": "^0.9.0",

@@ -12,26 +12,90 @@ const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a
 
 export class EvmAdapter implements DepositAdapter {
     chainId: string;
-    private rpcUrl: string;
+    private rpcUrls: string[];
     private treasuryAddress: string;
 
     constructor(chainId: string) {
         const config = CHAINS[chainId];
         if (!config) throw new Error(`Unknown chain: ${chainId}`);
         this.chainId = chainId;
-        this.rpcUrl = config.rpcUrl;
+        // Combine primary and fallback RPCs
+        this.rpcUrls = [config.rpcUrl, ...(config.rpcUrls || [])];
         this.treasuryAddress = config.treasuryAddress.toLowerCase();
     }
 
-    private async rpcCall(method: string, params: unknown[]) {
-        const res = await fetch(this.rpcUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-        });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error.message);
-        return data.result;
+    private async rpcCall(method: string, params: unknown[], forceUrl?: string) {
+        const urls = forceUrl ? [forceUrl] : this.rpcUrls;
+        let lastError: any = null;
+
+        for (const url of urls) {
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
+                });
+
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                const data = await res.json();
+                if (data.error) {
+                    // Specific handling for common rate limits
+                    if (data.error.message.includes('limit') || data.error.code === -32005) {
+                        console.warn(`[EvmAdapter] Rate limit on ${url}, trying next...`);
+                        lastError = data.error;
+                        continue;
+                    }
+                    throw new Error(data.error.message);
+                }
+                return data.result;
+            } catch (err: any) {
+                console.warn(`[EvmAdapter] RPC Error on ${url}:`, err.message);
+                lastError = err;
+            }
+        }
+        throw new Error(`All RPCs failed for ${this.chainId}: ${lastError?.message || 'Unknown error'}`);
+    }
+
+    async getLatestBlock(): Promise<number> {
+        const hex = await this.rpcCall('eth_blockNumber', []);
+        return parseInt(hex, 16);
+    }
+
+    /**
+     * Efficiently scan for logs across a range of blocks with chunking and fallback.
+     */
+    async scanLogs(fromBlock: number, toBlock: number, tokenContract: string, recipientTopic: string) {
+        const MAX_CHUNK = 1000; // Smaller chunks are safer for free RPCs
+        let currentFrom = fromBlock;
+        let allLogs: any[] = [];
+
+        while (currentFrom <= toBlock) {
+            const currentTo = Math.min(currentFrom + MAX_CHUNK, toBlock);
+            console.log(`[EvmAdapter] Scanning ${this.chainId} blocks ${currentFrom} to ${currentTo}...`);
+
+            try {
+                const result = await this.rpcCall('eth_getLogs', [{
+                    fromBlock: '0x' + currentFrom.toString(16),
+                    toBlock: '0x' + (currentTo === toBlock ? 'latest' : currentTo.toString(16)),
+                    address: tokenContract,
+                    topics: [TRANSFER_TOPIC, null, recipientTopic]
+                }]);
+
+                if (result && Array.isArray(result)) {
+                    allLogs = [...allLogs, ...result];
+                }
+
+                currentFrom = currentTo + 1;
+            } catch (err: any) {
+                console.error(`[EvmAdapter] Error scanning chunk ${currentFrom}-${currentTo}:`, err.message);
+
+                // If the error is likely a range or provider issue, we can try to continue but we throw for now 
+                // to let the higher level rotation handle it if it was a total failure.
+                throw err;
+            }
+        }
+        return allLogs;
     }
 
     /**

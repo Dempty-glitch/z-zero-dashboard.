@@ -31,7 +31,8 @@ export interface DepositAdapter {
 export interface ChainConfig {
     chainId: string;
     displayName: string;
-    rpcUrl: string;
+    rpcUrl: string;       // Primary RPC
+    rpcUrls?: string[];    // Fallback RPCs
     treasuryAddress: string;
     explorerUrl: string;
     nativeCurrency: string;

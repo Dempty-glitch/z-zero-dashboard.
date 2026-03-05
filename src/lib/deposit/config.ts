@@ -12,7 +12,12 @@ export const CHAINS: Record<string, ChainConfig> = {
     base: {
         chainId: 'base',
         displayName: 'Base',
-        rpcUrl: process.env.RPC_URL_BASE || 'https://mainnet.base.org',
+        rpcUrl: process.env.RPC_URL_BASE || 'https://1rpc.io/base',
+        rpcUrls: [
+            'https://mainnet.base.org',
+            'https://base.llamarpc.com',
+            'https://base.blockpi.network/v1/rpc/public'
+        ],
         treasuryAddress: EVM_TREASURY,
         explorerUrl: 'https://basescan.org',
         nativeCurrency: 'ETH',
@@ -21,7 +26,12 @@ export const CHAINS: Record<string, ChainConfig> = {
     ethereum: {
         chainId: 'ethereum',
         displayName: 'Ethereum',
-        rpcUrl: process.env.RPC_URL_ETH || 'https://eth.llamarpc.com',
+        rpcUrl: process.env.RPC_URL_ETH || 'https://1rpc.io/eth',
+        rpcUrls: [
+            'https://eth.llamarpc.com',
+            'https://rpc.ankr.com/eth',
+            'https://ethereum.blockpi.network/v1/rpc/public'
+        ],
         treasuryAddress: EVM_TREASURY,
         explorerUrl: 'https://etherscan.io',
         nativeCurrency: 'ETH',
@@ -30,7 +40,13 @@ export const CHAINS: Record<string, ChainConfig> = {
     bsc: {
         chainId: 'bsc',
         displayName: 'BNB Smart Chain',
-        rpcUrl: process.env.RPC_URL_BSC || 'https://bsc-dataseed.binance.org',
+        rpcUrl: process.env.RPC_URL_BSC || 'https://1rpc.io/bnb',
+        rpcUrls: [
+            'https://bsc-dataseed.binance.org',
+            'https://binance.llamarpc.com',
+            'https://rpc.ankr.com/bsc',
+            'https://bsc.blockpi.network/v1/rpc/public'
+        ],
         treasuryAddress: EVM_TREASURY,
         explorerUrl: 'https://bscscan.com',
         nativeCurrency: 'BNB',

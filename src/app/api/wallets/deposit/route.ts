@@ -1,142 +1,94 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { verifyDeposit } from '@/lib/deposit';
+import { EvmAdapter } from '@/lib/deposit/adapters/evm';
 
 export async function POST(request: Request) {
     try {
-        const { txHash, chainId, senderAddress, userId } = await request.json();
+        const { data: { session } } = await supabaseAdmin.auth.getSession();
+
+        const body = await request.json();
+        const { txHash, chainId } = body;
+        const userId = session?.user?.id || body.userId;
+
+        if (!userId) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
 
         if (!txHash || !chainId) {
             return NextResponse.json({ error: 'Missing txHash or chainId' }, { status: 400 });
         }
 
-        // 1. Idempotency Check — Has this tx already been processed?
-        const { data: existing } = await supabaseAdmin
-            .from('crypto_deposits')
-            .select('id')
-            .eq('chain_id', chainId)
-            .eq('tx_hash', txHash)
-            .single();
+        console.log(`[DEPOSIT] Verifying ${txHash} on ${chainId} for user ${userId}`);
 
-        if (existing) {
-            return NextResponse.json({ error: 'This transaction has already been credited', duplicate: true }, { status: 409 });
+        // 1. Verify transaction via EVM Adapter
+        const adapter = new EvmAdapter(chainId);
+        const result = await adapter.verifyTransaction(txHash);
+
+        if (!result.verified) {
+            return NextResponse.json({ error: result.error || 'Verification failed' }, { status: 400 });
         }
 
-        // Also check pending_deposits
-        const { data: existingPending } = await supabaseAdmin
-            .from('pending_deposits')
-            .select('id')
-            .eq('chain_id', chainId)
-            .eq('tx_hash', txHash)
-            .single();
-
-        if (existingPending) {
-            return NextResponse.json({ error: 'This transaction is already being processed', duplicate: true }, { status: 409 });
-        }
-
-        // 2. Verify on-chain via the modular adapter
-        const verification = await verifyDeposit({ txHash, chainId, senderAddress });
-
-        // 3a. Transaction not yet confirmed (still pending on blockchain)
-        if (!verification.verified && verification.error?.includes('pending')) {
-            await supabaseAdmin.from('pending_deposits').insert({
-                user_id: userId || null,
-                chain_id: chainId,
-                tx_hash: txHash,
-                sender_address: senderAddress || null,
-                status: 'CONFIRMING',
-            });
-
+        // 2. Ensure Recipient Matches User's Custodial Wallet
+        // Adapter returns `resolvedUserId` if it found a match in DB
+        if (!result.resolvedUserId || result.resolvedUserId !== userId) {
             return NextResponse.json({
-                status: 'CONFIRMING',
-                message: 'Transaction is pending confirmation. Your balance will be updated automatically.'
-            });
-        }
-
-        // 3b. Transaction failed or unrecognized token
-        if (!verification.verified) {
-            // Log to pending_reviews for Admin review
-            await supabaseAdmin.from('pending_reviews').insert({
-                chain_id: chainId,
-                tx_hash: txHash,
-                sender_address: senderAddress || verification.senderAddress,
-                raw_data: verification,
-                status: 'PENDING',
-            });
-
-            return NextResponse.json({
-                error: verification.error || 'Deposit verification failed',
-                status: 'REVIEW',
+                error: `This transaction was not sent to your designated deposit wallet.`
             }, { status: 400 });
         }
 
-        // 4. Verification passed! Credit the user.
-        // Priority: resolvedUserId (from wallet address lookup) > userId (from request) > session
-        const { data: { session } } = await supabaseAdmin.auth.getSession();
-        const resolvedUserId = verification.resolvedUserId || userId || session?.user?.id;
+        // 3. Idempotency check: Ensure TxHash isn't already credited
+        const uniqueDepositId = `${chainId}_${txHash}_tokentx`; // Match format from scan if needed, or just txHash
+        const { data: existing } = await supabaseAdmin
+            .from('crypto_deposits')
+            .select('id')
+            .eq('tx_hash', uniqueDepositId)
+            .single();
 
-        if (resolvedUserId) {
-            // 4a. User is logged in — credit directly
-            await supabaseAdmin.from('crypto_deposits').insert({
-                user_id: resolvedUserId,
-                chain_id: chainId,
-                tx_hash: txHash,
-                sender_address: verification.senderAddress,
-                token_symbol: verification.tokenSymbol,
-                amount_raw: verification.amountRaw,
-                amount_usd: verification.amountUsd,
-                status: 'CONFIRMED',
-            });
+        if (existing) {
+            return NextResponse.json({ error: 'This transaction has already been credited' }, { status: 400 });
+        }
 
-            // Update wallet balance
-            const { data: wallet } = await supabaseAdmin
+        // 4. Record Deposit & Update Balance
+        const { error: insertError } = await supabaseAdmin.from('crypto_deposits').insert({
+            user_id: userId,
+            chain_id: chainId,
+            tx_hash: uniqueDepositId,
+            sender_address: result.senderAddress,
+            token_symbol: result.tokenSymbol,
+            amount_raw: result.amountRaw,
+            amount_usd: result.amountUsd,
+            status: 'CONFIRMED',
+        });
+
+        if (insertError) throw insertError;
+
+        // Update main wallet balance
+        const { data: userWallet } = await supabaseAdmin
+            .from('wallets')
+            .select('balance')
+            .eq('user_id', userId)
+            .single();
+
+        if (userWallet) {
+            await supabaseAdmin
                 .from('wallets')
-                .select('balance')
-                .eq('user_id', resolvedUserId)
-                .single();
-
-            if (wallet) {
-                await supabaseAdmin
-                    .from('wallets')
-                    .update({ balance: Number(wallet.balance) + verification.amountUsd })
-                    .eq('user_id', resolvedUserId);
-            } else {
-                // Create wallet if it doesn't exist
-                await supabaseAdmin.from('wallets').insert({
-                    user_id: resolvedUserId,
-                    balance: verification.amountUsd,
-                });
-            }
-
-            return NextResponse.json({
-                status: 'CONFIRMED',
-                amount: verification.amountUsd,
-                token: verification.tokenSymbol,
-                chain: chainId,
-                message: `$${verification.amountUsd.toFixed(2)} ${verification.tokenSymbol} credited to your balance!`,
-            });
-
+                .update({ balance: Number(userWallet.balance) + result.amountUsd })
+                .eq('user_id', userId);
         } else {
-            // 4b. No user session — store as unclaimed for auto-claim on registration
-            await supabaseAdmin.from('pending_deposits').insert({
-                user_id: null,
-                chain_id: chainId,
-                tx_hash: txHash,
-                sender_address: verification.senderAddress,
-                token_symbol: verification.tokenSymbol,
-                amount_usd: verification.amountUsd,
-                status: 'UNCLAIMED',
-            });
-
-            return NextResponse.json({
-                status: 'UNCLAIMED',
-                amount: verification.amountUsd,
-                message: 'Deposit verified! Connect your wallet to claim this balance.',
+            await supabaseAdmin.from('wallets').insert({
+                user_id: userId,
+                balance: result.amountUsd,
             });
         }
 
+        return NextResponse.json({
+            success: true,
+            amount: result.amountUsd,
+            message: `Successfully credited $${result.amountUsd.toFixed(2)} to your account!`
+        });
+
     } catch (err: any) {
-        console.error('Deposit API Error:', err);
+        console.error('Deposit Error:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
