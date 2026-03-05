@@ -31,6 +31,11 @@ export default function DepositReview() {
     const [deposits, setDeposits] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
+    const [overrideMode, setOverrideMode] = useState(false);
+    const [adminTxHash, setAdminTxHash] = useState("");
+    const [adminUserEmail, setAdminUserEmail] = useState("");
+    const [adminChain, setAdminChain] = useState("base");
+    const [verifyingAdmin, setVerifyingAdmin] = useState(false);
 
     useEffect(() => {
         fetchDeposits();
@@ -60,6 +65,60 @@ export default function DepositReview() {
             console.error(err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleAdminVerify = async () => {
+        if (!adminTxHash || !adminUserEmail) {
+            toast.error("Please provide both Email and TxHash");
+            return;
+        }
+
+        const pin = window.prompt("Enter SuperMod PIN to confirm administrative override:");
+        if (pin !== "000000") {
+            toast.error("Invalid Admin PIN");
+            return;
+        }
+
+        setVerifyingAdmin(true);
+        try {
+            // 1. Resolve user ID from email
+            const { data: userData, error: userErr } = await supabase
+                .from('users')
+                .select('id')
+                .eq('email', adminUserEmail)
+                .single();
+
+            if (userErr || !userData) {
+                toast.error("User not found with this email");
+                return;
+            }
+
+            // 2. Call the deposit verification API (it's secure and handles balance + DB)
+            const res = await fetch('/api/wallets/deposit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: userData.id,
+                    txHash: adminTxHash,
+                    chainId: adminChain
+                })
+            });
+
+            const result = await res.json();
+
+            if (res.ok && result.success) {
+                toast.success(`Verification Successful! $${result.amount} credited.`);
+                setAdminTxHash("");
+                setAdminUserEmail("");
+                fetchDeposits();
+            } else {
+                toast.error(result.error || "Verification failed");
+            }
+        } catch (err: any) {
+            toast.error(err.message);
+        } finally {
+            setVerifyingAdmin(false);
         }
     };
 
@@ -131,10 +190,72 @@ export default function DepositReview() {
                     </h1>
                     <p className="text-zinc-500">Verify and manually confirm incoming crypto transfers.</p>
                 </div>
-                <Button variant="outline" className="border-zinc-800 bg-zinc-900" onClick={fetchDeposits}>
-                    <RefreshCcw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} /> Sync Ledger
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant={overrideMode ? "secondary" : "outline"}
+                        className={overrideMode ? "bg-amber-500 text-black border-none" : "border-zinc-800 bg-zinc-900"}
+                        onClick={() => setOverrideMode(!overrideMode)}
+                    >
+                        <ShieldAlert size={16} className="mr-2" />
+                        {overrideMode ? "Hide Form" : "Admin Override"}
+                    </Button>
+                    <Button variant="outline" className="border-zinc-800 bg-zinc-900" onClick={fetchDeposits}>
+                        <RefreshCcw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} /> Sync Ledger
+                    </Button>
+                </div>
             </div>
+
+            {overrideMode && (
+                <div className="p-6 bg-zinc-950 border border-amber-500/20 rounded-2xl animate-in slide-in-from-top-4 duration-300">
+                    <div className="flex items-center gap-2 text-amber-500 mb-4">
+                        <ShieldAlert size={18} />
+                        <h3 className="font-bold text-sm uppercase tracking-wider">Administrative Override Tool</h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-600 uppercase">Target User Email</label>
+                            <Input
+                                placeholder="customer@email.com"
+                                className="bg-black border-zinc-800 text-zinc-300 h-10"
+                                value={adminUserEmail}
+                                onChange={(e) => setAdminUserEmail(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-zinc-600 uppercase">Network</label>
+                            <select
+                                className="w-full bg-black border border-zinc-800 text-zinc-300 h-10 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+                                value={adminChain}
+                                onChange={(e) => setAdminChain(e.target.value)}
+                            >
+                                <option value="base">Base</option>
+                                <option value="bsc">BSC (Smart Chain)</option>
+                                <option value="ethereum">Ethereum</option>
+                                <option value="tron">Tron (TRC-20)</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1.5 md:col-span-1">
+                            <label className="text-[10px] font-bold text-zinc-600 uppercase">Transaction Hash</label>
+                            <Input
+                                placeholder="0x... or TxID"
+                                className="bg-black border-zinc-800 text-amber-500 font-mono text-xs h-10"
+                                value={adminTxHash}
+                                onChange={(e) => setAdminTxHash(e.target.value)}
+                            />
+                        </div>
+                        <Button
+                            className="bg-amber-600 hover:bg-amber-500 text-black font-bold h-10"
+                            onClick={handleAdminVerify}
+                            disabled={verifyingAdmin}
+                        >
+                            {verifyingAdmin ? "Verifying..." : "Pull & Verify Now"}
+                        </Button>
+                    </div>
+                    <p className="text-[10px] text-zinc-600 mt-3 italic">
+                        * This tool will fetch the transaction data directly from the blockchain and credit the specified user balance if valid.
+                    </p>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="md:col-span-2 bg-zinc-900/20 border border-zinc-800 rounded-2xl overflow-hidden">
