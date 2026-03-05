@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Wallet, Plus, ArrowUpRight, History } from 'lucide-react';
+import { Wallet, Plus, ArrowUpRight, History, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import DepositModalV2 from './DepositModalV2';
 
@@ -53,9 +53,35 @@ export default function DepositWallets({ userId, onRefresh }: DepositWalletsProp
 
                 <div>
                     <h3 className="text-xl font-bold text-white mb-1">Add Funds</h3>
-                    <p className="text-sm text-zinc-500 leading-relaxed">
-                        Deposit USDT or USDC to fund your AI Agent cards instantly via Web3 or manual transfer.
+                    <p className="text-sm text-zinc-500 leading-relaxed max-w-sm">
+                        Fund your AI Agent cards instantly via your dedicated deposit addresses.
                     </p>
+                </div>
+
+                <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between group/addr bg-black/40 border border-zinc-800 rounded-xl px-4 py-3 hover:border-emerald-500/30 transition-all cursor-pointer" onClick={() => {
+                        navigator.clipboard.writeText(wallets?.evm_address || '');
+                    }}>
+                        <div className="space-y-0.5">
+                            <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">EVM (Base/BSC/ETH)</span>
+                            <p className="text-xs font-mono text-emerald-400 truncate w-48">
+                                {wallets?.evm_address || 'Generating...'}
+                            </p>
+                        </div>
+                        <Copy size={14} className="text-zinc-600 group-hover/addr:text-emerald-500 transition-colors" />
+                    </div>
+
+                    <div className="flex items-center justify-between group/addr bg-black/40 border border-zinc-800 rounded-xl px-4 py-3 hover:border-emerald-500/30 transition-all cursor-pointer" onClick={() => {
+                        navigator.clipboard.writeText(wallets?.tron_address || '');
+                    }}>
+                        <div className="space-y-0.5">
+                            <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">Tron (TRC-20)</span>
+                            <p className="text-xs font-mono text-emerald-400 truncate w-48">
+                                {wallets?.tron_address || 'Generating...'}
+                            </p>
+                        </div>
+                        <Copy size={14} className="text-zinc-600 group-hover/addr:text-emerald-500 transition-colors" />
+                    </div>
                 </div>
             </div>
 
