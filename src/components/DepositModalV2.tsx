@@ -33,6 +33,7 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
     const [selectedChainId, setSelectedChainId] = useState('base');
     const [selectedToken, setSelectedToken] = useState('USDC');
     const [amount, setAmount] = useState('1');
+    const [manualHash, setManualHash] = useState('');
     const [copied, setCopied] = useState(false);
     const [mounted, setMounted] = useState(false);
 
@@ -126,6 +127,37 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
             });
         } catch (e: any) {
             setError(e.message);
+        }
+    };
+
+    const handleManualVerify = async () => {
+        if (!manualHash || manualHash.length < 20) {
+            setError("Please enter a valid Transaction Hash");
+            return;
+        }
+
+        setVerifying(true);
+        setError(null);
+
+        try {
+            const res = await fetch('/api/wallets/deposit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, txHash: manualHash, chainId: selectedChainId })
+            });
+
+            const d = await res.json();
+
+            if (res.ok && d.success) {
+                setStep('success');
+                if (onSuccess) onSuccess();
+            } else {
+                setError(d.error || "Invalid TxHash or Network match. Please check and try again.");
+            }
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setVerifying(false);
         }
     };
 
@@ -327,47 +359,76 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
                     {step === 'manual' && (
                         <div className="space-y-6 animate-in slide-in-from-bottom-4">
                             <div className="space-y-2">
-                                <h3 className="text-lg font-bold text-white">Manual Verification</h3>
-                                <p className="text-xs text-zinc-500">
-                                    If the system is slow to detect your {selectedToken} on {selectedChainId.toUpperCase()}, paste your Transaction Hash below for instant credit.
+                                <h3 className="text-xl font-bold text-white">Manual Verification</h3>
+                                <p className="text-xs text-zinc-500 leading-relaxed">
+                                    Our system normally detects credits in 1-2 minutes. If it's taking longer, select your network and paste your TxHash below for instant verification.
                                 </p>
                             </div>
 
-                            <div className="space-y-3">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-zinc-600 uppercase">Transaction Hash (TxID)</label>
-                                    <input
-                                        type="text"
-                                        placeholder="0x..."
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3.5 text-emerald-400 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                                        onChange={(e) => {
-                                            const val = e.target.value.trim();
-                                            if (val.length > 20) {
-                                                setVerifying(true);
-                                                fetch('/api/wallets/deposit', {
-                                                    method: 'POST',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify({ userId, txHash: val, chainId: selectedChainId })
-                                                }).then(res => res.json()).then(d => {
-                                                    if (d.success) {
-                                                        setStep('success');
-                                                        if (onSuccess) onSuccess();
-                                                    } else {
-                                                        setError(d.error || "Invalid TxHash");
-                                                    }
-                                                }).catch(e => setError(e.message)).finally(() => setVerifying(false));
-                                            }
-                                        }}
-                                    />
+                            <div className="space-y-4">
+                                {/* Network Selector */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Target Network</label>
+                                    <div className="relative group">
+                                        <select
+                                            value={selectedChainId}
+                                            onChange={(e) => setSelectedChainId(e.target.value)}
+                                            className="w-full bg-zinc-900 border border-zinc-800 text-white rounded-2xl px-4 py-3 appearance-none focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                        >
+                                            {CHAINS.map(c => <option key={c.id} value={c.id}>Network: {c.name}</option>)}
+                                        </select>
+                                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 pointer-events-none group-hover:text-white transition-colors" size={16} />
+                                    </div>
                                 </div>
-                                <p className="text-[10px] text-zinc-600 italic">
-                                    * Found on {selectedChainId === 'bsc' ? 'BscScan' : 'BaseScan'} after confirming in your wallet.
-                                </p>
+
+                                {/* TxID Input */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">Transaction Hash (TxID)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            value={manualHash}
+                                            placeholder="Paste Hash here..."
+                                            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4 text-emerald-400 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20 placeholder:text-zinc-700"
+                                            onChange={(e) => setManualHash(e.target.value.trim())}
+                                        />
+                                        {manualHash && (
+                                            <button
+                                                onClick={() => setManualHash('')}
+                                                className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white"
+                                            >
+                                                <X size={14} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] text-zinc-600 italic mt-1.5 flex items-center gap-1">
+                                        <Info size={10} />
+                                        * Found on {selectedChainId === 'bsc' ? 'BscScan' : selectedChainId === 'tron' ? 'TronScan' : selectedChainId === 'base' ? 'BaseScan' : 'Etherscan'} after confirming in your wallet.
+                                    </p>
+                                </div>
                             </div>
 
-                            <Button onClick={() => setStep('select')} variant="ghost" className="w-full text-zinc-500 hover:text-white">
-                                Back to Selection
-                            </Button>
+                            <div className="pt-2 space-y-3">
+                                <Button
+                                    onClick={handleManualVerify}
+                                    disabled={verifying || !manualHash}
+                                    className="w-full h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-base font-bold shadow-lg shadow-emerald-950/20"
+                                >
+                                    {verifying ? <span className="flex items-center gap-2"><Loader2 className="animate-spin" size={20} /> Verifying...</span> : "Check Status Now"}
+                                </Button>
+
+                                {error && <p className="text-[11px] text-red-400 text-center animate-in fade-in slide-in-from-top-1">{error}</p>}
+
+                                <button
+                                    onClick={() => {
+                                        setError(null);
+                                        setStep('select');
+                                    }}
+                                    className="w-full py-2 text-xs font-medium text-zinc-500 hover:text-white transition-colors"
+                                >
+                                    Cancel & Return
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>

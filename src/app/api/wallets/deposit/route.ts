@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { EvmAdapter } from '@/lib/deposit/adapters/evm';
+import { TronAdapter } from '@/lib/deposit/adapters/tron';
 
 export async function POST(request: Request) {
     try {
@@ -33,9 +34,15 @@ export async function POST(request: Request) {
 
         console.log(`[DEPOSIT] Verifying ${txHash} on ${chainId} for user ${userId}`);
 
-        // 1. Verify transaction via EVM Adapter
-        const adapter = new EvmAdapter(chainId);
-        const result = await adapter.verifyTransaction(txHash);
+        // 1. Verify transaction via appropriate Adapter
+        let result;
+        if (chainId === 'tron') {
+            const adapter = new TronAdapter();
+            result = await adapter.verifyTransaction(txHash);
+        } else {
+            const adapter = new EvmAdapter(chainId);
+            result = await adapter.verifyTransaction(txHash);
+        }
 
         if (!result.verified) {
             return NextResponse.json({ error: result.error || 'Verification failed' }, { status: 400 });

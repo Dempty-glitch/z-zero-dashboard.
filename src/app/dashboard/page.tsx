@@ -396,12 +396,12 @@ export default function DashboardPage() {
                             <li>Your AI agent can now start spending</li>
                         </ol>
                     </div>
-                    <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
+                    <div className="mt-6 pt-6 border-t border-white/5 flex flex-col gap-2">
                         <button
                             onClick={() => openDepositModal('manual')}
-                            className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1.5 p-1 -ml-1 group/manual"
+                            className="text-sm font-extrabold text-emerald-400 hover:text-emerald-300 transition-all flex items-center gap-2 p-2 -ml-2 group/manual hover:bg-emerald-500/5 rounded-xl w-fit"
                         >
-                            <ShieldCheck size={14} className="group-hover/manual:rotate-12 transition-transform" />
+                            <ShieldCheck size={18} className="group-hover/manual:rotate-12 transition-transform" />
                             Already sent funds? Paste TxHash manually
                         </button>
                     </div>
