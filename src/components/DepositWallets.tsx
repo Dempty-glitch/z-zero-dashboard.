@@ -13,12 +13,13 @@ interface WalletData {
 interface DepositWalletsProps {
     userId: string;
     onRefresh: () => void;
+    onOpenDeposit: (step: 'select' | 'manual') => void;
+    evmAddress: string;
+    tronAddress: string;
 }
 
-export default function DepositWallets({ userId, onRefresh }: DepositWalletsProps) {
+export default function DepositWallets({ userId, onRefresh, onOpenDeposit, evmAddress, tronAddress }: DepositWalletsProps) {
     const [wallets, setWallets] = useState<WalletData | null>(null);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [modalStep, setModalStep] = useState<'select' | 'manual'>('select');
     const [loading, setLoading] = useState(true);
 
     const fetchWallets = async () => {
@@ -61,24 +62,24 @@ export default function DepositWallets({ userId, onRefresh }: DepositWalletsProp
 
                 <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-between group/addr bg-black/40 border border-zinc-800 rounded-xl px-4 py-3 hover:border-emerald-500/30 transition-all cursor-pointer" onClick={() => {
-                        navigator.clipboard.writeText(wallets?.evm_address || '');
+                        navigator.clipboard.writeText(evmAddress || '');
                     }}>
                         <div className="space-y-0.5">
                             <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">EVM (Base/BSC/ETH)</span>
                             <p className="text-xs font-mono text-emerald-400 truncate w-48">
-                                {wallets?.evm_address || 'Generating...'}
+                                {evmAddress || 'Generating...'}
                             </p>
                         </div>
                         <Copy size={14} className="text-zinc-600 group-hover/addr:text-emerald-500 transition-colors" />
                     </div>
 
                     <div className="flex items-center justify-between group/addr bg-black/40 border border-zinc-800 rounded-xl px-4 py-3 hover:border-emerald-500/30 transition-all cursor-pointer" onClick={() => {
-                        navigator.clipboard.writeText(wallets?.tron_address || '');
+                        navigator.clipboard.writeText(tronAddress || '');
                     }}>
                         <div className="space-y-0.5">
                             <span className="text-[10px] uppercase font-bold text-zinc-600 tracking-wider">Tron (TRC-20)</span>
                             <p className="text-xs font-mono text-emerald-400 truncate w-48">
-                                {wallets?.tron_address || 'Generating...'}
+                                {tronAddress || 'Generating...'}
                             </p>
                         </div>
                         <Copy size={14} className="text-zinc-600 group-hover/addr:text-emerald-500 transition-colors" />
@@ -88,25 +89,11 @@ export default function DepositWallets({ userId, onRefresh }: DepositWalletsProp
 
             <div className="mt-8 flex gap-3">
                 <Button
-                    onClick={() => {
-                        setModalStep('select');
-                        setIsModalOpen(true);
-                    }}
+                    onClick={() => onOpenDeposit('select')}
                     className="flex-1 h-14 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-base shadow-lg shadow-emerald-950/20 group/btn"
                 >
                     <Plus className="mr-2 group-hover/btn:rotate-90 transition-transform duration-300" size={20} />
                     Deposit
-                </Button>
-                <Button
-                    variant="outline"
-                    onClick={() => {
-                        setModalStep('manual');
-                        setIsModalOpen(true);
-                    }}
-                    className="h-14 px-4 rounded-2xl border-zinc-800 bg-zinc-900 hover:bg-zinc-800 hover:text-emerald-400 group/verify transition-all"
-                    title="Verify manual TxHash"
-                >
-                    <ShieldCheck className="text-zinc-500 group-hover/verify:text-emerald-400 transition-colors" size={20} />
                 </Button>
                 <Button
                     variant="outline"
@@ -115,18 +102,6 @@ export default function DepositWallets({ userId, onRefresh }: DepositWalletsProp
                     <History className="text-zinc-500 group-hover/history:text-white transition-colors" size={20} />
                 </Button>
             </div>
-
-            {wallets && (
-                <DepositModalV2
-                    isOpen={isModalOpen}
-                    onClose={() => setIsModalOpen(false)}
-                    evmAddress={wallets.evm_address}
-                    tronAddress={wallets.tron_address}
-                    userId={userId}
-                    onSuccess={onRefresh}
-                    initialStep={modalStep}
-                />
-            )}
         </div>
     );
 }

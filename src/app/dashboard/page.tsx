@@ -7,6 +7,7 @@ import { Wallet, ArrowUpRight, ArrowDownRight, Activity, Terminal, Loader2, Cloc
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import DepositWallets from "@/components/DepositWallets";
+import DepositModalV2 from "@/components/DepositModalV2";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -47,7 +48,14 @@ export default function DashboardPage() {
     const [virtualCards, setVirtualCards] = useState<any[]>([]);
     const [evmAddress, setEvmAddress] = useState<string>("");
     const [tronAddress, setTronAddress] = useState<string>("");
+    const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
+    const [modalStep, setModalStep] = useState<'select' | 'manual'>('select');
     const router = useRouter();
+
+    const openDepositModal = (step: 'select' | 'manual' = 'select') => {
+        setModalStep(step);
+        setIsDepositModalOpen(true);
+    };
 
     useEffect(() => {
         let userSub: any;
@@ -367,24 +375,50 @@ export default function DashboardPage() {
 
             {/* Deposit Wallets — Crypto deposit addresses for this user */}
             <div className="grid gap-4 md:grid-cols-2">
-                {user && <DepositWallets userId={user.id} onRefresh={() => fetchDashboardData(user.id)} />}
+                {user && (
+                    <DepositWallets
+                        userId={user.id}
+                        onRefresh={() => fetchDashboardData(user.id)}
+                        onOpenDeposit={openDepositModal}
+                        evmAddress={evmAddress}
+                        tronAddress={tronAddress}
+                    />
+                )}
 
                 {/* Quick tip card */}
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col justify-between">
                     <div>
                         <h3 className="font-semibold text-white text-sm mb-2">💡 How Deposits Work</h3>
-                        <ol className="text-xs text-gray-400 space-y-2 list-decimal list-inside">
+                        <ol className="text-xs text-zinc-400 space-y-2 list-decimal list-inside leading-relaxed">
                             <li>Copy your deposit address (EVM or Tron)</li>
                             <li>Send USDT or USDC from any exchange</li>
                             <li>Balance updates automatically in ~2 min</li>
                             <li>Your AI agent can now start spending</li>
                         </ol>
                     </div>
-                    <div className="mt-4 text-xs text-gray-600">
-                        Min deposit: $10 · Supported: USDT, USDC
+                    <div className="mt-4 pt-4 border-t border-white/5 flex flex-col gap-2">
+                        <button
+                            onClick={() => openDepositModal('manual')}
+                            className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center gap-1.5 p-1 -ml-1 group/manual"
+                        >
+                            <ShieldCheck size={14} className="group-hover/manual:rotate-12 transition-transform" />
+                            Already sent funds? Paste TxHash manually
+                        </button>
                     </div>
                 </div>
             </div>
+
+            {user && (
+                <DepositModalV2
+                    isOpen={isDepositModalOpen}
+                    onClose={() => setIsDepositModalOpen(false)}
+                    evmAddress={evmAddress}
+                    tronAddress={tronAddress}
+                    userId={user.id}
+                    onSuccess={() => fetchDashboardData(user.id)}
+                    initialStep={modalStep}
+                />
+            )}
 
             {/* Virtual Cards Section */}
             <div className="space-y-4">

@@ -40,6 +40,12 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
         setMounted(true);
     }, []);
 
+    useEffect(() => {
+        if (isOpen) {
+            setStep(initialStep);
+        }
+    }, [isOpen, initialStep]);
+
     // Wagmi Hooks
     const { isConnected, chainId: activeChainId, address: walletAddress } = useAccount();
     const { switchChain } = useSwitchChain();
