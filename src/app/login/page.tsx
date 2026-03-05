@@ -46,7 +46,7 @@ export default function LoginPage() {
                     <div className="space-y-1">
                         <CardTitle className="text-3xl font-bold tracking-tight">Human Login</CardTitle>
                         <CardDescription className="text-zinc-400">
-                            Authorize your agents and pre-fund your crypto account.
+                            Login via Google to manage your account and connect Web3 wallets.
                         </CardDescription>
                     </div>
                 </CardHeader>
@@ -67,25 +67,6 @@ export default function LoginPage() {
                                     Continue with Google
                                 </>
                             )}
-                        </Button>
-
-                        <div className="relative py-4">
-                            <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t border-zinc-800" />
-                            </div>
-                            <div className="relative flex justify-center text-[10px] uppercase tracking-widest font-bold">
-                                <span className="bg-zinc-900/40 px-3 text-zinc-500">Other Methods</span>
-                            </div>
-                        </div>
-
-                        {/* Wallet Placeholder (Future) */}
-                        <Button
-                            variant="outline"
-                            className="w-full h-13 border-zinc-800 bg-zinc-900/60 hover:bg-zinc-800 hover:text-white text-zinc-400 transition-all group"
-                            disabled={loading}
-                        >
-                            <Wallet className="mr-2 h-5 w-5 group-hover:text-blue-400 transition-colors" />
-                            Connect Web3 Wallet
                         </Button>
                     </div>
 
