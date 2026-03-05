@@ -29,19 +29,40 @@ export default function AgentsPage() {
 
     const fetchAgents = async () => {
         setLoading(true);
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) return;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+            const userId = session.user.id;
 
-        const { data, error } = await supabase
-            .from("cards")
-            .select("*")
-            .eq("user_id", session.user.id)
-            .order("created_at", { ascending: false });
+            // 0. Ensure user exists in public.users (sync from auth.users)
+            const { data: userData, error: userError } = await supabase
+                .from("users")
+                .select("id")
+                .eq("id", userId)
+                .single();
 
-        if (!error && data) {
-            setAgents(data);
+            if (userError && userError.code === 'PGRST116') {
+                await supabase.from("users").insert({
+                    id: userId,
+                    email: session.user.email
+                });
+            }
+
+            // 1. Fetch Agents (Cards)
+            const { data, error } = await supabase
+                .from("cards")
+                .select("*")
+                .eq("user_id", userId)
+                .order("created_at", { ascending: false });
+
+            if (!error && data) {
+                setAgents(data);
+            }
+        } catch (err) {
+            console.error("Fetch Agents Error:", err);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleCreateAgent = async () => {
