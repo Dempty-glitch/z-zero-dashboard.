@@ -18,6 +18,7 @@ interface DepositModalV2Props {
     tronAddress: string;
     userId: string;
     onSuccess?: () => void;
+    initialStep?: 'select' | 'manual';
 }
 
 const CHAINS = [
@@ -27,8 +28,8 @@ const CHAINS = [
     { id: 'tron', name: 'Tron', standard: 'TRC-20', icon: '🔴', color: 'bg-red-500', min: 1 },
 ];
 
-export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddress, userId, onSuccess }: DepositModalV2Props) {
-    const [step, setStep] = useState<'select' | 'confirm' | 'success' | 'manual'>('select');
+export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddress, userId, onSuccess, initialStep = 'select' }: DepositModalV2Props) {
+    const [step, setStep] = useState<'select' | 'confirm' | 'success' | 'manual'>(initialStep);
     const [selectedChainId, setSelectedChainId] = useState('base');
     const [selectedToken, setSelectedToken] = useState('USDC');
     const [amount, setAmount] = useState('1');
