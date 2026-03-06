@@ -67,14 +67,7 @@ export default function DepositModalV2({ isOpen, onClose, evmAddress, tronAddres
         else if (selectedChainId === 'ethereum') setSelectedToken('USDT');
         else if (selectedChainId === 'tron') setSelectedToken('USDT');
 
-        // [PA-1] Record "Intent" to start scanning from this block
-        if (isOpen && (selectedChainId === 'bsc' || selectedChainId === 'base' || selectedChainId === 'ethereum')) {
-            fetch('/api/wallets/intent', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chainId: selectedChainId })
-            }).catch(e => console.warn("Failed to record intent:", e));
-        }
+        // Record "Intent" logic removed as API was deleted
     }, [selectedChainId, isOpen]);
 
     const activeChainConfig = CHAINS.find(c => c.id === selectedChainId);
