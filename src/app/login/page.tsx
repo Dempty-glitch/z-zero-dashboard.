@@ -69,56 +69,6 @@ export default function LoginPage() {
                             )}
                         </Button>
 
-                        <div className="relative py-4">
-                            <div className="absolute inset-0 flex items-center">
-                                <span className="w-full border-t border-zinc-800" />
-                            </div>
-                            <div className="relative flex justify-center text-xs uppercase">
-                                <span className="bg-black px-2 text-zinc-500 font-bold tracking-widest">OR DEBUG ACCESS</span>
-                            </div>
-                        </div>
-
-                        <form onSubmit={async (e) => {
-                            e.preventDefault();
-                            setLoading(true);
-                            const formData = new FormData(e.currentTarget);
-                            const email = formData.get('email') as string;
-                            const password = formData.get('password') as string;
-
-                            const { error } = await supabase.auth.signInWithPassword({
-                                email,
-                                password,
-                            });
-
-                            if (error) {
-                                alert(error.message);
-                                setLoading(false);
-                            } else {
-                                window.location.href = '/admin';
-                            }
-                        }} className="space-y-3">
-                            <input
-                                name="email"
-                                type="email"
-                                placeholder="Admin Email"
-                                className="w-full h-12 bg-zinc-950 border border-zinc-800 rounded-xl px-4 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                required
-                            />
-                            <input
-                                name="password"
-                                type="password"
-                                placeholder="Password"
-                                className="w-full h-12 bg-zinc-950 border border-zinc-800 rounded-xl px-4 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                required
-                            />
-                            <Button
-                                type="submit"
-                                className="w-full h-12 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl"
-                                disabled={loading}
-                            >
-                                Login as Master Admin
-                            </Button>
-                        </form>
                     </div>
 
                     <p className="text-[10px] text-center text-zinc-500 leading-relaxed px-6">
