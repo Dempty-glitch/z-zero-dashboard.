@@ -81,7 +81,7 @@ export default function AdminLayout({
         navItems.push({ href: '/admin/logs', icon: ShieldAlert, label: 'Admin Actions' });
     }
 
-    navItems.push({ href: '/admin/issuing', icon: Settings, label: 'Partner Config' });
+    navItems.push({ href: '/admin/partner-config', icon: Settings, label: 'Partner Config' });
 
     return (
         <div className="min-h-screen bg-zinc-950 text-foreground flex">
