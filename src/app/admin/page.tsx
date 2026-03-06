@@ -47,11 +47,11 @@ export default function AdminOverview() {
             // 2. Fetch total spending (GMV)
             const { data: txData } = await supabase
                 .from('transactions')
-                .select('amount, user_id');
+                .select('amount, card_id, cards(user_id)');
 
             const spentCount = txData?.length || 0;
             const spentTotal = txData?.reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
-            const paidUserIds = new Set(txData?.map(tx => tx.user_id));
+            const paidUserIds = new Set(txData?.map(tx => (tx.cards as any)?.user_id).filter(Boolean));
 
             // 3. Fetch total deposits
             const { data: depositData } = await supabase
