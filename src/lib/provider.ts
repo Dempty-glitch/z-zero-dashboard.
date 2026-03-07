@@ -117,3 +117,25 @@ export async function getSecureCardDetails(cardId: string) {
         name: data.name_on_card || 'Z-ZERO AI AGENT'
     };
 }
+
+/**
+ * 4. Deactivate a Card (Cancel JIT)
+ */
+export async function deactivateCard(cardId: string) {
+    const token = await getAuthToken();
+    const res = await fetch(`${API_BASE}/issuing/cards/${cardId}/deactivate`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ cancellation_reason: 'CANCELLED_BY_USER' })
+    });
+
+    if (!res.ok) {
+        console.error('Issuer Card Deactivation Failed:', await res.text());
+        throw new Error('Failed to deactivate card');
+    }
+
+    return true;
+}
